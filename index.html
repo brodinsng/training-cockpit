@@ -597,7 +597,7 @@ renderRaces();tickRaces();setInterval(tickRaces,1000);renderMeals();
     }
     renderToday();
     renderSchedule();
-    document.getElementById('sub').textContent=`Live as of ${now.toLocaleString('en-GB',{timeZone:TZ,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${acts.length} activities read`;
+    document.getElementById('sub').textContent=`Live as of ${now.toLocaleString('en-GB',{timeZone:TZ,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${ACTS.length} activities read`;
     document.getElementById('foot').innerHTML='Load model: relative effort → CTL (fitness, 42d) / ATL (fatigue, 7d) / TSB (form). Schedule filtered to your sessions from the B&amp;G calendar. Pull down / reopen to refresh.';
   }catch(e){
     document.getElementById('sub').innerHTML='<span class="err">Couldn’t reach a data source: '+e.message+'</span>';
