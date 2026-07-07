@@ -100,12 +100,21 @@
   .meal input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
   #meal_grocery{width:100%;min-height:66px;border:1px solid var(--line);border-radius:9px;padding:10px;font-family:inherit;font-size:13px;resize:vertical}
   .genbtn{padding:7px 14px;background:var(--peacock);color:#fff;border:none;border-radius:8px;font-weight:650;font-size:12px;cursor:pointer}
+  /* athlete metrics */
+  .metrics{display:flex;gap:10px;flex-wrap:wrap}
+  .metric{flex:1;min-width:96px}
+  .metric label{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
+  .metric input{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:16px;font-family:inherit;font-weight:700}
+  .derived{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px}
+  .derived .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .derived .v{font-size:20px;font-weight:750;margin-top:2px}
+  .mealctx{background:var(--sky);border-radius:10px;padding:10px 13px;font-size:13px;margin-bottom:12px;line-height:1.5}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Training Cockpit</h1>
-  <div class="sub" id="sub">At your service, sir. Pulling live from Strava &amp; your B&amp;G calendar… [build v1.1]</div>
+  <div class="sub" id="sub">At your service, sir. Pulling live from Strava &amp; your B&amp;G calendar… [build v1.2]</div>
 
   <h2>A-Race Countdown</h2>
   <div class="grid2" id="raceCards"></div>
@@ -133,6 +142,17 @@
   <div class="muted" style="margin:2px 4px 0">In plain English, sir: <b>CTL = fitness</b> (training you've banked over ~6 weeks) · <b>ATL = fatigue</b> (how hard the last week hit) · <b>TSB = form</b> (fitness − fatigue; a plus means fresh, a minus means tired).</div>
   <div id="stateBox" style="margin-top:10px"></div>
   <div id="swimwatch" style="margin-top:12px"></div>
+
+  <h2>Athlete Metrics · height / weight / FTP</h2>
+  <div class="card">
+    <div class="metrics">
+      <div class="metric"><label>Height (cm)</label><input type="number" id="pf_h" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+      <div class="metric"><label>Weight (kg)</label><input type="number" id="pf_w" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+      <div class="metric"><label>FTP (watts)</label><input type="number" id="pf_ftp" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+    </div>
+    <div class="derived" id="pf_derived"></div>
+    <div class="muted" id="pf_note" style="margin-top:10px"></div>
+  </div>
 
   <h2>Race Readiness · TriFactor Long</h2>
   <div class="card" id="readiness"><div class="loading">Projecting trajectory…</div></div>
@@ -171,13 +191,17 @@
     <div class="muted" id="addmsg" style="margin-top:8px"></div>
   </div>
 
-  <h2>Weekly Meal Prep</h2>
+  <h2>Weekly Meal Prep · performance-tuned</h2>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div class="muted">High-protein week for the build — saved on this device. Edit any line.</div>
-      <button id="mealgen" class="genbtn" onclick="generateMeals()">✨ Suggest a week</button>
+      <div class="muted">Auto-tuned to your training load &amp; form — bigger fuel on hard/heavy weeks, leaner when fresh. Carb-timed to your week, rotates automatically each week. Edit any line.</div>
+      <button id="mealgen" class="genbtn" onclick="generateMeals()">✨ New week</button>
     </div>
-    <div id="meals" style="margin-top:12px"></div>
+    <div class="addform" style="margin-top:12px;margin-bottom:0">
+      <input type="text" id="meal_avoid" placeholder="Foods to avoid — e.g. tuna, yogurt, pork, shellfish" onchange="saveAvoid()">
+    </div>
+    <div class="mealctx" id="mealctx" style="margin-top:12px"></div>
+    <div id="meals"></div>
     <div class="cap2" style="margin-top:14px">Grocery list / notes</div>
     <textarea id="meal_grocery" oninput="saveMeals()" placeholder="Shopping list, prep notes…"></textarea>
   </div>
@@ -189,11 +213,7 @@
 </div>
 
 <script>
-const STRAVA='mcp__831cd606-a5c7-4a91-aedb-eaf56d4fa72d__list_activities';
-const CAL='mcp__3216c5e7-8fd8-43ac-b4a2-b7e91d9db446__list_events';
 const CAL_ID='8m24vu51l6rse8ckm4slje0g3s@group.calendar.google.com';
-const CREATE='mcp__3216c5e7-8fd8-43ac-b4a2-b7e91d9db446__create_event';
-const DELETE='mcp__3216c5e7-8fd8-43ac-b4a2-b7e91d9db446__delete_event';
 const TZ='Asia/Singapore';
 let EVENTS=[],ACTS=[],SHOW_HIDDEN=false,MODEL=null;
 
@@ -208,14 +228,6 @@ function fmtKm(m){return (m/1000).toFixed(m<10000?1:0);}
 function fmtHrs(s){const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h>0?`${h}h${m?m+'m':''}`:`${m}m`;}
 function sportColor(s){if(/run/i.test(s))return'var(--run)';if(/ride|cycl|bike/i.test(s))return'var(--ride)';if(/swim/i.test(s))return'var(--swim)';return'var(--other)';}
 function sportBucket(s){if(/run/i.test(s))return'Run';if(/ride|cycl|bike|virtualride/i.test(s))return'Bike';if(/swim/i.test(s))return'Swim';return'Other';}
-
-async function callTool(name,args){
-  const r=await window.cowork.callMcpTool(name,args);
-  if(r&&r.isError)throw new Error('Tool error: '+name);
-  let raw=r.structuredContent;
-  if(!raw&&r.content&&r.content[0]&&r.content[0].text){try{raw=JSON.parse(r.content[0].text);}catch(e){raw=r.content[0].text;}}
-  return raw;
-}
 
 /* ---------- races ---------- */
 function loadRaces(){
@@ -344,7 +356,6 @@ function renderWeek(acts){
 
 /* ---------- trend chart ---------- */
 function renderTrend(m){
-  // weekly buckets, last 8 weeks (Mon-Sun)
   const weeks=[];const now=new Date();
   const mondayThis=new Date(now);const dow=(mondayThis.getDay()+6)%7;mondayThis.setDate(mondayThis.getDate()-dow);mondayThis.setHours(0,0,0,0);
   for(let i=7;i>=0;i--){const s=new Date(mondayThis);s.setDate(s.getDate()-i*7);const e=new Date(s);e.setDate(e.getDate()+7);
@@ -364,6 +375,7 @@ function toggleHidden(){SHOW_HIDDEN=!SHOW_HIDDEN;renderSchedule();}
 
 function isTrainingSession(e){
   const nm=e.summary||'';const s=e.start&&(e.start.dateTime||e.start.date);if(!s)return false;
+  if(e.colorId!=='7')return false; // peacock = Brodin's; any other colour (or default) is his partner's — never his
   return TRAIN_IN.test(nm)&&!TRAIN_OUT.test(nm);
 }
 function sessionBucket(name){name=name||'';if(/swim/i.test(name))return'Swim';if(/run|brick|track|jog/i.test(name))return'Run';if(/ride|bike|smash|five45|ccp|base|spin|zwift|cycl/i.test(name))return'Bike';return'Other';}
@@ -395,7 +407,6 @@ function renderSchedule(){
     const desc=(e.description||'').replace(/Triathlon build[^.]*\.\s*/i,'').split(/[.\n]/)[0];
     const es=effStatus(e.id,st,AUTO);const strike=es?'opacity:.5;text-decoration:line-through':'';
     const tag=es==='auto'?'<span class="muted" style="font-size:11px"> · ✓ matched on Strava</span>':'';
-    const safe=(e.summary||'').replace(/'/g,'\\u0027');
     const manual=st[e.id];
     return `<div class="sess">
       <div class="when"><div class="d">${dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div><div class="t">${time}</div></div>
@@ -518,32 +529,131 @@ function renderVolume(){
      <div class="muted" style="margin-top:6px">Week so far (Mon–Sun). Your norms: 100–200km bike · ~30km run · 1 pool swim.</div>`;
 }
 
-/* ---------- meal prep ---------- */
+/* ---------- athlete profile (height / weight / FTP) ---------- */
+function loadProfile(){try{return JSON.parse(localStorage.getItem('gideon_profile')||'{}');}catch(e){return{};}}
+function fillProfileInputs(){const p=loadProfile();['h','w','ftp'].forEach(k=>{const el=document.getElementById('pf_'+k);if(el&&p[k])el.value=p[k];});}
+function saveProfile(){
+  const g=id=>{const el=document.getElementById(id);return el&&el.value!==''?+el.value:0;};
+  localStorage.setItem('gideon_profile',JSON.stringify({h:g('pf_h'),w:g('pf_w'),ftp:g('pf_ftp')}));
+  renderProfile();renderMealContext();
+}
+function avgDailyTrainKcal(){
+  let t=0;const now=new Date();const lo=new Date(now);lo.setDate(lo.getDate()-7);
+  (ACTS||[]).forEach(a=>{const d=new Date((a.start_local||'').slice(0,10)+'T00:00:00');if(d>lo)t+=(a.summary&&a.summary.total_calories)||0;});
+  return t/7;
+}
+function maintenanceKcal(p){
+  if(!p||!p.w||!p.h)return 0;
+  const age=25;const bmr=10*p.w+6.25*p.h-5*age+5; // Mifflin-St Jeor (male)
+  return Math.round(bmr*1.35+avgDailyTrainKcal());
+}
+function renderProfile(){
+  const p=loadProfile();const box=document.getElementById('pf_derived');const note=document.getElementById('pf_note');if(!box)return;
+  const parts=[];
+  if(p.w&&p.h)parts.push(['BMI',(p.w/Math.pow(p.h/100,2)).toFixed(1)]);
+  if(p.ftp&&p.w)parts.push(['Power-to-weight',(p.ftp/p.w).toFixed(2)+' W/kg']);
+  const kcal=maintenanceKcal(p);
+  if(kcal)parts.push(['Est. fuel need','~'+kcal.toLocaleString()+' kcal/day']);
+  box.innerHTML=parts.length?parts.map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join(''):'<div class="muted">Add your height, weight and FTP, sir — I\\u0027ll cross-reference them across training, fuelling and recovery.</div>';
+  if(note){
+    const n=[];
+    if(p.ftp&&p.w){const wkg=p.ftp/p.w;n.push(wkg>=4?`${wkg.toFixed(2)} W/kg — a strong engine for TriFactor, sir.`:wkg>=3?`${wkg.toFixed(2)} W/kg — a solid amateur base; the bike leg rewards nudging this up.`:`${wkg.toFixed(2)} W/kg — room to build; targeted FTP work pays off most here.`);}
+    if(kcal&&MODEL&&MODEL.last){const tsb=MODEL.last.tsb;if(tsb<-20)n.push('Deep fatigue right now — eat toward the top of that estimate and prioritise protein + carbs to actually recover.');else if(tsb>8)n.push('You\\u0027re fresh — a modest trim below the estimate is where race weight comes off without denting sessions.');}
+    note.innerHTML=n.join(' ');
+  }
+}
+
+/* ---------- meal prep (performance-tuned) ---------- */
 const MEAL_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const MEAL_PLANS=[
+ { Mon:"B: Oats, banana, peanut butter + whey / L: Chicken rice (skin off, extra cucumber) / D: Grilled salmon, sweet potato, broccoli",
+   Tue:"REST · B: Greek yogurt, berries, chia / L: Yong tau foo (soup, extra tofu+egg, hold noodles) / D: Stir-fried chicken + tofu, mixed veg, half rice",
+   Wed:"FIVE45 · B: 3-egg omelette, wholemeal toast, fruit / L: Teriyaki chicken don (extra rice) / D: Wholemeal spaghetti bolognese (lean beef) + recovery shake",
+   Thu:"B: Overnight oats + Greek yogurt / L: Fish soup with rice / D: Baked chicken thigh, quinoa, roast veg",
+   Fri:"SWIM · B: PB-banana toast + 2 eggs / L: Salmon poke bowl (rice, edamame) / D: Prawn + tofu stir-fry, jasmine rice",
+   Sat:"LONG · B: Wholemeal pancakes, eggs, honey, banana / L: Chicken pasta salad / D: Grilled fish, sweet potato mash, greens",
+   Sun:"CCP+BRICK · B: Big oats, banana, honey, whey (dates on the ride) / L: Chicken rice + extra veg / D: Salmon, rice, stir-fried veg + recovery shake",
+   grocery:"Rolled oats, bananas, peanut butter, whey, Greek yogurt, berries, chia, eggs, wholemeal bread + pasta, jasmine rice, quinoa, salmon, white fish, chicken breast + thigh, lean beef mince, firm tofu, prawns, edamame, sweet potato, broccoli, mixed veg, cucumber, honey, dates" },
+ { Mon:"B: Wholemeal toast, scrambled eggs, avocado / L: Sliced fish beehoon soup (less oil) / D: Baked chicken breast, brown rice, kailan",
+   Tue:"REST · B: Protein smoothie (whey, berries, spinach) / L: Thunder tea rice (extra veg) / D: Steamed fish, tofu, sautéed greens, small rice",
+   Wed:"FIVE45 · B: Oats, banana, honey, whey / L: Chicken teriyaki rice bowl / D: Prawn aglio olio (wholemeal) + recovery shake",
+   Thu:"B: Greek yogurt, granola, fruit / L: Chicken chop, mash, salad / D: Beef + broccoli stir-fry, jasmine rice",
+   Fri:"SWIM · B: Peanut butter oats + egg / L: Tuna wholemeal wrap + fruit / D: Grilled salmon, quinoa, roasted veg",
+   Sat:"LONG · B: Wholemeal French toast, eggs, banana / L: Nasi lemak (less santan, extra egg/chicken) / D: Chicken pasta, side salad",
+   Sun:"CCP+BRICK · B: Big oats, honey, whey, banana (dates on ride) / L: Fish soup with rice / D: Teriyaki chicken don + recovery shake",
+   grocery:"Wholemeal bread + pasta, eggs, avocado, whey, Greek yogurt, granola, oats, bananas, berries, spinach, brown + jasmine rice, quinoa, salmon, white fish, canned tuna, chicken breast + chop, lean beef, prawns, tofu, kailan, broccoli, mixed veg, peanut butter, honey" },
+ { Mon:"B: Egg + wholemeal wrap, fruit / L: Poke bowl (chicken or tofu, rice) / D: Grilled fish, sweet potato, greens",
+   Tue:"REST · B: Greek yogurt, chia, berries / L: Sliced fish soup (hold noodles, extra veg) / D: Chicken + vegetable soup, small rice",
+   Wed:"FIVE45 · B: Oats, banana, peanut butter, whey / L: Char-grilled chicken rice bowl / D: Wholemeal mac, lean beef, veg + recovery shake",
+   Thu:"B: Overnight oats + yogurt / L: Yong tau foo (rice, extra protein) / D: Salmon, quinoa, roast veg",
+   Fri:"SWIM · B: 3-egg omelette, toast, fruit / L: Chicken wrap + edamame / D: Prawn + tofu stir-fry, jasmine rice",
+   Sat:"LONG · B: Wholemeal pancakes, eggs, honey, banana / L: Beef hor fun (less oil) / D: Baked chicken, sweet potato, salad",
+   Sun:"CCP+BRICK · B: Big oats, honey, whey, banana (dates on ride) / L: Chicken rice + extra cucumber + veg / D: Grilled salmon, rice, stir-fried veg + shake",
+   grocery:"Oats, bananas, peanut butter, whey, Greek yogurt, chia, berries, eggs, wholemeal bread/wrap/pasta, jasmine rice, quinoa, salmon, white fish, chicken breast, lean beef, prawns, tofu, edamame, sweet potato, mixed veg, cucumber, honey, dates" }
+];
+function isoWeekIdx(){const d=new Date();const oneJan=new Date(d.getFullYear(),0,1);return Math.ceil((((d-oneJan)/86400000)+oneJan.getDay()+1)/7);}
+function mealIdx(){const i=parseInt(localStorage.getItem('gideon_meal_idx')||'0',10);return isNaN(i)?0:i;}
 function loadMeals(){try{return JSON.parse(localStorage.getItem('gideon_meals')||'{}');}catch(e){return{};}}
 function saveMeals(){const m=loadMeals();MEAL_DAYS.forEach(d=>{const el=document.getElementById('meal_'+d);if(el)m[d]=el.value;});const g=document.getElementById('meal_grocery');if(g)m.grocery=g.value;localStorage.setItem('gideon_meals',JSON.stringify(m));}
+/* dietary exclusions: swap out anything Brodin won't eat, choosing a replacement he hasn't also excluded */
+const SWAP_MAP={
+ 'greek yogurt':['cottage cheese','kefir','protein smoothie'],'yogurt':['cottage cheese','kefir','protein smoothie'],
+ 'tuna':['salmon','chicken','mackerel'],'salmon':['chicken','white fish','tofu'],'white fish':['chicken','tofu'],'fish':['chicken','tofu'],
+ 'prawns':['chicken','tofu','squid'],'prawn':['chicken','tofu','squid'],'shellfish':['chicken','tofu'],
+ 'beef':['chicken','turkey','tofu'],'lean beef':['chicken','turkey','tofu'],'pork':['chicken','turkey'],
+ 'chicken':['tofu','turkey','tempeh','fish'],'turkey':['chicken','tofu'],
+ 'eggs':['tofu scramble','protein shake'],'egg':['tofu','protein shake'],
+ 'tofu':['chicken','tempeh','chickpeas'],'tempeh':['tofu','chicken'],
+ 'milk':['oat milk','soy milk'],'dairy':['oat milk'],'cheese':['avocado'],
+ 'peanut butter':['almond butter','seeds'],'peanut':['almond','seeds'],'nuts':['seeds'],'edamame':['chickpeas','peas']
+};
+function loadAvoid(){return (localStorage.getItem('gideon_meal_avoid')||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);}
+function pickSwap(term,avoid){const cands=SWAP_MAP[term]||[];for(const c of cands){if(!avoid.some(a=>c.toLowerCase().includes(a)))return c;}return cands[0]||'an alternative';}
+function applyExclusions(text,avoid){
+  if(!text||!avoid.length)return text;
+  let out=text;
+  [...avoid].sort((a,b)=>b.length-a.length).forEach(term=>{
+    if(!term)return;const swap=pickSwap(term,avoid);
+    out=out.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),swap);
+  });
+  return out;
+}
+function saveAvoid(){const el=document.getElementById('meal_avoid');localStorage.setItem('gideon_meal_avoid',el?el.value:'');applyPlan(mealIdx());renderMeals();renderMealContext();}
+function applyPlan(idx){const n=((idx%MEAL_PLANS.length)+MEAL_PLANS.length)%MEAL_PLANS.length;const p=MEAL_PLANS[n];const avoid=loadAvoid();const m={};MEAL_DAYS.forEach(d=>m[d]=applyExclusions(p[d],avoid));m.grocery=applyExclusions(p.grocery,avoid);localStorage.setItem('gideon_meals',JSON.stringify(m));localStorage.setItem('gideon_meal_idx',String(n));}
+function seedMeals(){
+  const wk=String(isoWeekIdx());const savedWk=localStorage.getItem('gideon_meal_week');
+  const m=loadMeals();const has=MEAL_DAYS.some(d=>(m[d]||'').trim());
+  if(!has||savedWk!==wk){applyPlan(isoWeekIdx());localStorage.setItem('gideon_meal_week',wk);}
+}
 function renderMeals(){
   const m=loadMeals();const box=document.getElementById('meals');if(!box)return;
-  box.innerHTML=MEAL_DAYS.map(d=>`<div class="meal"><span class="mday">${d}</span><input id="meal_${d}" oninput="saveMeals()" placeholder="—" value="${(m[d]||'').replace(/"/g,'&quot;')}"></div>`).join('');
+  box.innerHTML=MEAL_DAYS.map(d=>`<div class="meal"><span class="mday">${d}</span><input id="meal_${d}" oninput="saveMeals()" placeholder="—" value="${(m[d]||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"></div>`).join('');
   const g=document.getElementById('meal_grocery');if(g)g.value=m.grocery||'';
 }
-async function generateMeals(){
-  if(!(window.cowork&&window.cowork.askClaude)){alert('AI meal suggestions come in a later version, sir — type your week in for now; it saves automatically.');return;}
-  const btn=document.getElementById('mealgen');const old=btn.textContent;btn.textContent='Thinking…';btn.disabled=true;
-  try{
-    const prompt="You are Gideon, Brodin's meal-prep assistant. Propose a practical high-protein weekly meal-prep plan (Mon to Sun) for him: 65kg male triathlete in a build block toward a long-course race, based in Singapore, trains 6 days/week (bike/run/swim) with Tuesday as rest. Mix of batch-cooking and quick assembly, rotating variety, protein-forward, budget-sane, locally available ingredients. Output EXACTLY 7 lines formatted 'Mon: breakfast / lunch / dinner' (one per day, concise). Then one final line starting 'GROCERY: ' with a short comma-separated shopping list.";
-    const res=await window.cowork.askClaude(prompt,[{context:'high-protein triathlon build week, Singapore'}]);
-    const text=typeof res==='string'?res:(res&&(res.text||res.content))||'';
-    if(!text.trim())throw new Error('no response');
-    const meals=loadMeals();
-    text.split(/\n+/).map(l=>l.trim()).filter(Boolean).forEach(l=>{
-      const dm=l.match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*[:\-]\s*(.+)$/i);
-      if(dm){meals[dm[1].slice(0,3).replace(/^\w/,c=>c.toUpperCase())]=dm[2].trim();return;}
-      const gm=l.match(/^GROCERY\s*[:\-]\s*(.+)$/i);if(gm)meals.grocery=gm[1].trim();
-    });
-    localStorage.setItem('gideon_meals',JSON.stringify(meals));renderMeals();
-  }catch(e){alert('Couldn’t generate a plan: '+e.message);}
-  btn.textContent=old;btn.disabled=false;
+function renderMealContext(){
+  const el=document.getElementById('mealctx');if(!el)return;
+  const p=loadProfile();const kcal=maintenanceKcal(p);
+  let emphasis='balanced',form=null,load7=0;
+  if(MODEL&&MODEL.last)form=Math.round(MODEL.last.tsb);
+  if(MODEL&&MODEL.byDay){const now=new Date();const lo=new Date(now);lo.setDate(lo.getDate()-7);for(const[day,v]of Object.entries(MODEL.byDay)){const d=new Date(day+'T00:00:00');if(d>lo)load7+=v;}}
+  if(form!==null){
+    if(form<=-20)emphasis='recovery + high-carb';
+    else if(form<=-10)emphasis='high-carb build';
+    else if(form<=8)emphasis='balanced';
+    else emphasis='lean / maintenance';
+  }
+  const bits=[`<b>This week:</b> ${emphasis}`];
+  if(form!==null)bits.push(`form ${form>0?'+':''}${form}`);
+  if(load7)bits.push(`7-day load ${Math.round(load7)}`);
+  if(kcal)bits.push(`~${kcal.toLocaleString()} kcal/day`);
+  const avoid=loadAvoid();
+  let html=bits.join(' · ')+(p.w?'':' <span class="muted">— add your weight in Athlete Metrics for a calorie target</span>');
+  if(avoid.length)html+=`<div class="muted" style="margin-top:5px">Avoiding: ${avoid.join(', ')} — swapped out across the week.</div>`;
+  el.innerHTML=html;
+}
+function generateMeals(){
+  const btn=document.getElementById('mealgen');applyPlan(mealIdx()+1);renderMeals();renderMealContext();
+  if(btn){const o=btn.textContent;btn.textContent='✓ Fresh week in';setTimeout(()=>{btn.textContent=o;},1400);}
 }
 
 /* ---------- feedback ---------- */
@@ -559,26 +669,16 @@ function fallbackAdvice(m,acts){
   else tips.push('Bike–run balance looks sane. Keep the Wed FIVE45 intensity and Sun CCP brick as your fixed quality anchors and build easy volume around them.');
   return tips.map(t=>`<p>• ${t}</p>`).join('');
 }
-async function renderAdvice(m,acts){
+function renderAdvice(m,acts){
   const el=document.getElementById('advice');
   el.innerHTML=fallbackAdvice(m,acts);
-  try{
-    const {ctl,atl,tsb}=m.last;const c=windowSum(acts,7,0);
-    const summary={fitness:+ctl.toFixed(0),fatigue:+atl.toFixed(0),form:+tsb.toFixed(0),
-      last7:Object.fromEntries(Object.entries(c.out).map(([k,v])=>[k,{sessions:v.n,km:+(v.dist/1000).toFixed(1),load:+v.load.toFixed(0)}])),
-      swimsLast14:windowSum(acts,14,0).swim};
-    const prompt="You are Gideon, Brodin's dry-witted triathlon coach-assistant (Jarvis-style). From these training-load metrics, give exactly 3 short, specific, actionable tips to train more efficiently toward his A-race TriFactor Long (13 Sep 2026). Context: swim is his weak link (races 2:30-2:40/100m, 1 pool session/week, technique focus); he rides 100-200km/wk, runs ~30km/wk; fixed anchors are Wed FIVE45 intensity and Sun CCP brick; he de-loads in Thailand 15-20 Jul. Address him as 'sir'. Each tip 1-2 sentences. Return plain sentences, one per line, no numbering.";
-    const res=await window.cowork.askClaude(prompt,[summary]);
-    const text=typeof res==='string'?res:(res&&(res.text||res.content))||'';
-    if(text&&text.trim()){
-      const lines=text.split(/\n+/).map(l=>l.replace(/^[\d\-•.\)\s]+/,'').trim()).filter(Boolean);
-      el.innerHTML=lines.map(l=>`<p>• ${l}</p>`).join('')+`<div class="muted" style="margin-top:8px">Generated live from today’s metrics.</div>`;
-    }
-  }catch(e){/* keep fallback */}
 }
 
 /* ---------- boot ---------- */
-renderRaces();tickRaces();setInterval(tickRaces,1000);renderMeals();
+renderRaces();tickRaces();setInterval(tickRaces,1000);
+fillProfileInputs();renderProfile();
+(function(){const a=document.getElementById('meal_avoid');if(a)a.value=localStorage.getItem('gideon_meal_avoid')||'';})();
+seedMeals();renderMeals();renderMealContext();
 (async()=>{
   try{
     const now=new Date();
@@ -595,6 +695,7 @@ renderRaces();tickRaces();setInterval(tickRaces,1000);renderMeals();
       const m=buildModel(ACTS);MODEL=m;
       renderGauges(m);renderSwimWatch();renderReadiness(m);renderWeek(ACTS);renderTrend(m);renderTrendLine(m);renderBalance();renderVolume();renderWins();renderAdvice(m,ACTS);
     }
+    renderProfile();renderMealContext();
     renderToday();
     renderSchedule();
     document.getElementById('sub').textContent=`Live as of ${now.toLocaleString('en-GB',{timeZone:TZ,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${ACTS.length} activities read`;
