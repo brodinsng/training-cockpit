@@ -41,6 +41,8 @@ export async function onRequestGet({ env }) {
       description: e.description || '',
       start: e.start,
       end: e.end,
+      colorId: e.colorId || '',        // peacock (7) = Brodin's; anything else is his partner's
+      creatorEmail: (e.creator && e.creator.email) || '',
     }));
     return new Response(JSON.stringify({ events }), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
