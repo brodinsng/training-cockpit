@@ -111,6 +111,14 @@
   .pill{background:#eef4f0;color:var(--good);border-radius:99px;padding:3px 10px;font-weight:650}
   .beta{display:inline-block;background:var(--peacock);color:#fff;border-radius:6px;font-size:10px;font-weight:700;padding:2px 7px;vertical-align:middle;margin-left:8px;letter-spacing:.5px}
   .statusbar a{color:var(--peacock);text-decoration:none}
+  /* daily check-in */
+  .chk{margin:12px 0}
+  .chk .lbl{font-size:12.5px;font-weight:650;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  .chk .lbl span{color:var(--mut);font-weight:500;font-size:11px}
+  .seg{display:flex;gap:6px}
+  .seg button{flex:1;border:1px solid var(--line);background:#fff;color:var(--mut);border-radius:8px;padding:9px 0;font-weight:700;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--peacock);color:#fff;border-color:var(--peacock)}
+  .readi{margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:600;background:#f3f6f9}
 </style>
 </head>
 <body>
@@ -148,6 +156,12 @@
   <div class="grid2">
     <div class="card"><div class="cap2">Planned</div><div id="todayPlanned"><div class="loading">…</div></div></div>
     <div class="card"><div class="cap2">Logged on Strava</div><div id="todayDone"><div class="loading">…</div></div></div>
+  </div>
+
+  <h2>Daily Check-in · how do you feel today?</h2>
+  <div class="card">
+    <div id="checkin"></div>
+    <div class="readi" id="readi"></div>
   </div>
 
   <h2>Fitness · Fatigue · Form</h2>
@@ -339,7 +353,16 @@ function generateMeals(){const btn=document.getElementById('mealgen');applyPlan(
 
 /* ---------- feedback ---------- */
 function fallbackAdvice(m,acts){const {tsb}=m.last;const sw14=windowSum(acts,14,0).swim;const c=windowSum(acts,7,0).out;const tips=[];if(sw14===0)tips.push('No swim in the data — if triathlon’s the target, one weekly pool session is the highest-leverage, lowest-fatigue time to buy back.');if(tsb<-25)tips.push('Heavy fatigue right now. Resist adding volume — bank a de-load and let form rebound.');else if(tsb<-10)tips.push('Productive fatigue, exactly where a build should sit. Keep easy days truly aerobic.');else tips.push('Form is fresh — spend it on one quality session, not extra easy volume.');const runL=(c.Run&&c.Run.load)||0,bikeL=(c.Bike&&c.Bike.load)||0;if(runL>bikeL*1.1)tips.push('Run load is outrunning the bike — keep the diesel engine ticking.');else tips.push('Bike–run balance looks sane. Anchor one hard session + one long, build easy around them.');return tips.map(t=>`<p>• ${t}</p>`).join('');}
-function renderAdvice(m,acts){document.getElementById('advice').innerHTML=fallbackAdvice(m,acts);}
+/* ---------- daily check-in (subjective readiness) — tailors coaching to how they feel ---------- */
+const CHK_METRICS=[{k:'legs',label:'Legs',lo:'Wrecked',hi:'Fresh'},{k:'sleep',label:'Sleep',lo:'Poor',hi:'Great'},{k:'sore',label:'Soreness',lo:'Very sore',hi:'None'},{k:'mot',label:'Motivation',lo:'Low',hi:'High'}];
+function chkKey(){return 'app_checkin_'+ymd(new Date());}
+function loadCheckin(){try{return JSON.parse(localStorage.getItem(chkKey())||'{}');}catch(e){return{};}}
+function setCheck(k,v){const c=loadCheckin();c[k]=v;localStorage.setItem(chkKey(),JSON.stringify(c));renderCheckin();renderReadyBadge();renderAdvice(MODEL,ACTS);}
+function renderCheckin(){const c=loadCheckin();const box=document.getElementById('checkin');if(!box)return;box.innerHTML=CHK_METRICS.map(m=>`<div class="chk"><div class="lbl">${m.label}<span>${m.lo} → ${m.hi}</span></div><div class="seg">${[1,2,3,4,5].map(v=>`<button class="${c[m.k]===v?'on':''}" onclick="setCheck('${m.k}',${v})">${v}</button>`).join('')}</div></div>`).join('');}
+function checkinScore(){const c=loadCheckin();const vals=CHK_METRICS.map(m=>c[m.k]).filter(v=>v);if(!vals.length)return null;return vals.reduce((a,b)=>a+b,0)/vals.length;}
+function renderReadyBadge(){const el=document.getElementById('readi');if(!el)return;const sub=checkinScore();const tsb=MODEL&&MODEL.last?MODEL.last.tsb:null;if(sub===null){el.style.background='#f3f6f9';el.innerHTML='<span class="muted">Tap a number for each — your check-in tailors today’s coaching to how you actually feel, not just the data.</span>';return;}let obj=3;if(tsb!=null){obj=tsb>5?5:tsb>-10?4:tsb>-20?3:tsb>-30?2:1;}const readiness=sub*0.6+obj*0.4;let label,bg;if(readiness>=4){label='Green — good to go';bg='#e9f7f0';}else if(readiness>=2.8){label='Amber — proceed with care';bg='#fff5e9';}else{label='Red — back off today';bg='#fdece9';}el.style.background=bg;el.innerHTML=`Readiness: <b>${label}</b> · you feel <b>${sub.toFixed(1)}/5</b>${tsb!=null?` · form ${tsb>0?'+':''}${Math.round(tsb)}`:''}`;}
+function subjectiveTip(){const sub=checkinScore();const tsb=MODEL&&MODEL.last?MODEL.last.tsb:null;if(sub===null)return 'Fill in today’s check-in above and I’ll tailor this to how you actually feel — not just the numbers.';const feelBad=sub<=2.5,feelGood=sub>=4;const objTired=tsb!=null&&tsb<-15;if(feelBad&&objTired)return 'Both the data and your check-in agree — you’re cooked. Make today easy or rest; pushing now only digs the hole deeper.';if(feelBad&&!objTired)return `Your load looks OK${tsb!=null?` (form ${tsb>0?'+':''}${Math.round(tsb)})`:''}, but you’re flagging low — poor sleep or heavy legs override the model. Trust the body and soften today.`;if(feelGood&&objTired)return 'Form’s negative but you feel fresh — fine to do today as planned, just keep the easy parts easy and stop if the legs turn.';if(feelGood&&!objTired)return 'Green across the board — feeling good and the load’s in a good place. A day to spend on quality.';return 'Balanced — nothing screaming. Train as planned and keep the easy days genuinely easy.';}
+function renderAdvice(m,acts){document.getElementById('advice').innerHTML='<p>• '+subjectiveTip()+'</p>'+(m?fallbackAdvice(m,acts):'');}
 
 /* ---------- onboarding + boot ---------- */
 function showGate(me){
@@ -364,6 +387,7 @@ function renderStatus(){
   renderRaces();tickRaces();setInterval(tickRaces,1000);
   fillProfileInputs();renderProfile();seedMeals();renderMeals();renderMealContext();
   const a=document.getElementById('meal_avoid');if(a)a.value=localStorage.getItem('app_meal_avoid')||'';
+  renderCheckin();renderReadyBadge();
   try{
     const [aRaw,cRaw]=await Promise.all([fetch('/api/u/activities').then(r=>r.json()),fetch('/api/u/events').then(r=>r.json())]);
     if((aRaw&&aRaw.needAuth)||(cRaw&&cRaw.needAuth)){showGate(me);return;}
@@ -372,7 +396,7 @@ function renderStatus(){
     ACTS=(aRaw&&aRaw.activities)||[];EVENTS=(cRaw&&cRaw.events)||[];
     if(!ACTS.length){document.getElementById('gauges').innerHTML='<div class="card err">No Strava activities found on your account yet.</div>';}
     else{const m=buildModel(ACTS);MODEL=m;renderGauges(m);renderSwimWatch();renderReadiness(m);renderWeek(ACTS);renderTrend(m);renderTrendLine(m);renderBalance();renderVolume();renderWins();renderAdvice(m,ACTS);}
-    renderProfile();renderMealContext();renderToday();renderSchedule();
+    renderProfile();renderMealContext();renderToday();renderSchedule();renderReadyBadge();
     document.getElementById('sub').textContent=`Live as of ${new Date().toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${ACTS.length} activities read`;
     document.getElementById('foot').innerHTML='Load model: relative effort → CTL (fitness, 42d) / ATL (fatigue, 7d) / TSB (form). Sessions read from your Google Calendar by name. Reload to refresh · <a href="/api/logout">disconnect</a>.';
   }catch(e){
