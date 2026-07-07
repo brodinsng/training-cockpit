@@ -1,8 +1,9 @@
-// GET /api/auth/strava/callback  → exchanges the code for tokens and shows the refresh token to paste into env.
+// GET /api/auth/strava/callback  → exchange the code for the user's refresh token, store it in a cookie.
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
+  const origin = url.origin;
   const code = url.searchParams.get('code');
-  if (!code) return new Response('Missing code', { status: 400 });
+  if (!code) return Response.redirect(origin + '/app/?err=strava', 302);
   const res = await fetch('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -14,14 +15,9 @@ export async function onRequestGet({ request, env }) {
     }),
   });
   const d = await res.json();
-  const rt = d.refresh_token || '(none returned) ' + JSON.stringify(d);
-  return new Response(
-    `<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
-     <body style="font-family:system-ui;max-width:640px;margin:40px auto;padding:0 16px">
-     <h2>Strava connected ✓</h2>
-     <p>Copy this value into your Cloudflare Pages env var <b>STRAVA_REFRESH_TOKEN</b>, then redeploy:</p>
-     <pre style="padding:14px;background:#eef2f6;border-radius:8px;white-space:pre-wrap;word-break:break-all">${rt}</pre>
-     <p style="color:#5f7585">You can close this tab afterwards.</p></body>`,
-    { headers: { 'Content-Type': 'text/html' } }
-  );
+  if (!d.refresh_token) return Response.redirect(origin + '/app/?err=strava_token', 302);
+  const headers = new Headers();
+  headers.append('Set-Cookie', `s_rt=${encodeURIComponent(d.refresh_token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=34560000`);
+  headers.append('Location', origin + '/app/');
+  return new Response(null, { status: 302, headers });
 }
