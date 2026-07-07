@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Cockpit</title>
+<meta name="theme-color" content="#039be5">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<style>
+  :root{color-scheme:light;
+    --bg:#f5f8fb; --card:#ffffff; --line:#e4eaf0; --ink:#12232f; --mut:#5f7585;
+    --peacock:#0284c7; --peacock2:#039be5; --sky:#e8f5fd;
+    --run:#f5972a; --ride:#0284c7; --swim:#12b3a6; --other:#8a93a0;
+    --good:#12a56a; --warn:#e0952a; --bad:#e0533a; --strava:#fc4c02;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);padding:0 16px 60px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:23px;font-weight:750;letter-spacing:-.3px;margin-top:22px}
+  .sub{color:var(--mut);font-size:13px;margin-top:3px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.3px;color:var(--peacock);font-weight:700;margin:26px 4px 12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .grid2{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:700px){.grid2{grid-template-columns:1fr 1fr}}
+  .grid3{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:700px){.grid3{grid-template-columns:1fr 1fr 1fr}}
+  .race{position:relative;overflow:hidden}
+  .race::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--peacock),var(--peacock2))}
+  .rtag{font-size:10px;text-transform:uppercase;letter-spacing:1.4px;color:var(--peacock2);font-weight:700}
+  .rname{font-size:17px;font-weight:750;margin:5px 0 2px}
+  .rmeta{color:var(--mut);font-size:12px;margin-bottom:12px}
+  .clock{display:flex;gap:8px}
+  .u{flex:1;background:var(--sky);border-radius:9px;padding:9px 4px;text-align:center}
+  .u .n{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+  .u .l{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+  .rweeks{margin-top:11px;font-size:13px}
+  .rweeks b{color:var(--peacock);font-size:15px}
+  .rm{position:absolute;top:12px;right:12px;border:none;background:none;color:var(--mut);cursor:pointer;font-size:15px;line-height:1}
+  .gauge{text-align:center}
+  .gauge .big{font-size:38px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1}
+  .gauge .cap{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+  .gauge .desc{font-size:12px;margin-top:5px;color:var(--mut)}
+  .state{margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:600}
+  .stat{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .stat:last-child{border-bottom:none}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .sname{font-weight:650;font-size:14px;flex:1}
+  .sval{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums;text-align:right}
+  .sval b{color:var(--ink)}
+  .delta{font-size:11px;font-weight:700;margin-left:6px}
+  .up{color:var(--good)} .dn{color:var(--bad)}
+  .sess{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .sess:last-child{border-bottom:none}
+  .when{width:70px;flex:none;text-align:center}
+  .when .d{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .when .t{font-size:13px;font-weight:700;margin-top:1px}
+  .sbar{width:4px;border-radius:4px;flex:none}
+  .sinfo{flex:1}
+  .stitle{font-weight:650;font-size:14px}
+  .sdesc{font-size:12px;color:var(--mut);margin-top:2px}
+  .flag{background:#fff5e9;border:1px solid #f6dcb4;color:#8a5a10;border-radius:10px;padding:11px 14px;font-size:13px;margin-top:12px}
+  .advice{font-size:14px;line-height:1.6}
+  .advice p{margin-bottom:8px}
+  .addform{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .addform input{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit}
+  .addform input[type=text]{flex:1;min-width:150px}
+  .addform button{border:none;background:var(--peacock);color:#fff;border-radius:9px;padding:9px 16px;font-weight:650;font-size:13px;cursor:pointer}
+  .muted{color:var(--mut);font-size:12px}
+  .loading{color:var(--mut);font-size:13px;padding:8px 0}
+  canvas{max-height:230px}
+  .err{background:#fdece9;border:1px solid #f5c6bd;color:#a3341f;border-radius:10px;padding:12px 14px;font-size:13px}
+  .sactions{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}
+  .mini{border:1px solid var(--line);background:#fff;color:var(--mut);border-radius:7px;padding:4px 9px;font-size:11px;font-weight:650;cursor:pointer}
+  .mini.done{color:var(--good)} .mini.del{color:var(--bad)}
+  #compliance a{color:var(--peacock);text-decoration:none}
+  .cap2{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--peacock);font-weight:700;margin-bottom:8px}
+  .todo{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;border-bottom:1px solid var(--line)}
+  .todo:last-child{border-bottom:none}
+  .vol{margin:14px 0}
+  .vol .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .track{height:11px;background:#eef2f6;border-radius:99px;position:relative;overflow:hidden}
+  .track .fillv{height:100%;border-radius:99px}
+  .track .zone{position:absolute;top:0;bottom:0;background:rgba(18,165,106,.16)}
+  .verdict{font-size:14px;font-weight:600;padding:12px 14px;border-radius:10px;margin-top:2px}
+  .rk{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px}
+  .rk .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .rk .v{font-size:23px;font-weight:750;margin-top:2px}
+  .meal{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .meal .mday{width:38px;font-weight:700;font-size:12px;color:var(--peacock)}
+  .meal input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
+  #meal_grocery{width:100%;min-height:66px;border:1px solid var(--line);border-radius:9px;padding:10px;font-family:inherit;font-size:13px;resize:vertical}
+  .genbtn{padding:7px 14px;background:var(--peacock);color:#fff;border:none;border-radius:8px;font-weight:650;font-size:12px;cursor:pointer}
+  .metrics{display:flex;gap:10px;flex-wrap:wrap}
+  .metric{flex:1;min-width:96px}
+  .metric label{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
+  .metric input{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 11px;font-size:16px;font-family:inherit;font-weight:700}
+  .derived{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px}
+  .derived .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .derived .v{font-size:20px;font-weight:750;margin-top:2px}
+  .mealctx{background:var(--sky);border-radius:10px;padding:10px 13px;font-size:13px;margin-bottom:12px;line-height:1.5}
+  /* onboarding + status */
+  .gatewrap{min-height:80vh;display:flex;align-items:center;justify-content:center}
+  .gatecard{max-width:440px;text-align:center;padding:30px 26px}
+  .gatecard h1{margin-top:0}
+  .gatecard p{color:var(--mut);font-size:14px;line-height:1.6;margin:12px 0 20px}
+  .connectbtn{display:block;text-decoration:none;color:#fff;font-weight:700;font-size:15px;padding:13px;border-radius:11px;margin-bottom:11px}
+  .connectbtn.strava{background:var(--strava)}
+  .connectbtn.google{background:#0284c7}
+  .connectbtn.done{background:#eef4f0;color:var(--good);border:1px solid #cfe9dc;pointer-events:none}
+  .statusbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:12px}
+  .pill{background:#eef4f0;color:var(--good);border-radius:99px;padding:3px 10px;font-weight:650}
+  .beta{display:inline-block;background:var(--peacock);color:#fff;border-radius:6px;font-size:10px;font-weight:700;padding:2px 7px;vertical-align:middle;margin-left:8px;letter-spacing:.5px}
+  .statusbar a{color:var(--peacock);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ONBOARDING GATE -->
+  <div id="gate" class="gatewrap" style="display:none">
+    <div class="card gatecard">
+      <h1>Training Cockpit</h1>
+      <p>Your live triathlon dashboard — fitness, fatigue &amp; form, your week's sessions, race countdowns and a performance-tuned meal planner. Connect your own accounts to see your own training. Read-only; your data stays yours.</p>
+      <a id="cs" class="connectbtn strava" href="/api/auth/strava/login">Connect Strava</a>
+      <a id="cg" class="connectbtn google" href="/api/auth/google/login">Connect Google Calendar</a>
+      <div class="muted" id="gatemsg" style="margin-top:14px">We only ever read your activities and calendar — never post, never write. Disconnect anytime.</div>
+    </div>
+  </div>
+
+  <!-- COCKPIT -->
+  <div id="cockpit" style="display:none">
+  <h1>Training Cockpit <span class="beta">BETA</span></h1>
+  <div class="sub" id="sub">At your service. Pulling your live Strava &amp; calendar…</div>
+  <div class="statusbar" id="statusbar"></div>
+
+  <h2>A-Race Countdown</h2>
+  <div class="grid2" id="raceCards"></div>
+  <div class="card" style="margin-top:14px">
+    <div class="muted">Add your race — it saves on this device and starts counting down.</div>
+    <div class="addform">
+      <input type="text" id="rn" placeholder="Race name (e.g. Desaru 70.3)">
+      <input type="date" id="rd">
+      <button onclick="addRace()">Add race</button>
+    </div>
+  </div>
+
+  <h2>Today · <span id="todayDate"></span></h2>
+  <div class="grid2">
+    <div class="card"><div class="cap2">Planned</div><div id="todayPlanned"><div class="loading">…</div></div></div>
+    <div class="card"><div class="cap2">Logged on Strava</div><div id="todayDone"><div class="loading">…</div></div></div>
+  </div>
+
+  <h2>Fitness · Fatigue · Form</h2>
+  <div class="grid3" id="gauges">
+    <div class="card gauge"><div class="loading">Computing load model…</div></div>
+    <div class="card gauge"></div>
+    <div class="card gauge"></div>
+  </div>
+  <div class="muted" style="margin:2px 4px 0">In plain English: <b>CTL = fitness</b> (banked over ~6 weeks) · <b>ATL = fatigue</b> (how hard the last week hit) · <b>TSB = form</b> (fitness − fatigue; plus = fresh, minus = tired).</div>
+  <div id="stateBox" style="margin-top:10px"></div>
+  <div id="swimwatch" style="margin-top:12px"></div>
+
+  <h2>Athlete Metrics · height / weight / FTP</h2>
+  <div class="card">
+    <div class="metrics">
+      <div class="metric"><label>Height (cm)</label><input type="number" id="pf_h" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+      <div class="metric"><label>Weight (kg)</label><input type="number" id="pf_w" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+      <div class="metric"><label>FTP (watts)</label><input type="number" id="pf_ftp" inputmode="decimal" oninput="saveProfile()" placeholder="—"></div>
+    </div>
+    <div class="derived" id="pf_derived"></div>
+    <div class="muted" id="pf_note" style="margin-top:10px"></div>
+  </div>
+
+  <h2>Race Readiness</h2>
+  <div class="card" id="readiness"><div class="loading">Projecting trajectory…</div></div>
+
+  <h2>Load Trend · last 8 weeks</h2>
+  <div class="card"><canvas id="trend"></canvas></div>
+
+  <h2>Fitness &amp; Form Trend · 8 weeks</h2>
+  <div class="card"><canvas id="trendLine"></canvas></div>
+
+  <h2>Discipline Balance · last 28 days</h2>
+  <div class="card"><canvas id="balance"></canvas></div>
+
+  <h2>Last 7 Days · by discipline</h2>
+  <div class="card" id="weekStats"><div class="loading">Crunching sessions…</div></div>
+
+  <h2>Weekly Volume · vs norms</h2>
+  <div class="card" id="volume"><div class="loading">Measuring the week…</div></div>
+
+  <h2>Recent Wins · PRs &amp; achievements</h2>
+  <div class="card" id="wins"><div class="loading">Counting the wins…</div></div>
+
+  <h2>What's Next · training schedule</h2>
+  <div id="compliance" class="muted" style="margin:0 4px 10px"></div>
+  <div class="card" id="schedule"><div class="loading">Reading your calendar…</div></div>
+  <div class="muted" style="margin:8px 4px 0">Sessions are read from your Google Calendar by name (run / ride / swim / etc.). Calendar-writing and colour filters are coming.</div>
+
+  <h2>Weekly Meal Prep · performance-tuned</h2>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div class="muted">Auto-tuned to your training load &amp; form — bigger fuel on hard/heavy weeks, leaner when fresh. Rotates weekly. Edit any line.</div>
+      <button id="mealgen" class="genbtn" onclick="generateMeals()">✨ New week</button>
+    </div>
+    <div class="addform" style="margin-top:12px;margin-bottom:0">
+      <input type="text" id="meal_avoid" placeholder="Foods to avoid — e.g. tuna, yogurt, pork, shellfish" onchange="saveAvoid()">
+    </div>
+    <div class="mealctx" id="mealctx" style="margin-top:12px"></div>
+    <div id="meals"></div>
+    <div class="cap2" style="margin-top:14px">Grocery list / notes</div>
+    <textarea id="meal_grocery" oninput="saveMeals()" placeholder="Shopping list, prep notes…"></textarea>
+  </div>
+
+  <h2>The Coach's Read · tailoring feedback</h2>
+  <div class="card advice" id="advice"><div class="loading">Thinking…</div></div>
+
+  <div class="sub" style="margin-top:24px" id="foot"></div>
+  </div>
+</div>
+
+<script>
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Singapore';
+let EVENTS=[],ACTS=[],SHOW_HIDDEN=false,MODEL=null;
+
+const DEFAULT_RACES=[];
+
+/* ---------- helpers ---------- */
+function ymd(d){return d.toISOString().slice(0,10);}
+function fmtKm(m){return (m/1000).toFixed(m<10000?1:0);}
+function fmtHrs(s){const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h>0?`${h}h${m?m+'m':''}`:`${m}m`;}
+function sportColor(s){if(/run/i.test(s))return'var(--run)';if(/ride|cycl|bike/i.test(s))return'var(--ride)';if(/swim/i.test(s))return'var(--swim)';return'var(--other)';}
+function sportBucket(s){if(/run/i.test(s))return'Run';if(/ride|cycl|bike|virtualride/i.test(s))return'Bike';if(/swim/i.test(s))return'Swim';return'Other';}
+
+/* ---------- races (per device) ---------- */
+function loadRaces(){let custom=[];try{custom=JSON.parse(localStorage.getItem('app_races')||'[]');}catch(e){}return [...DEFAULT_RACES,...custom].filter(r=>r&&r.date).sort((a,b)=>new Date(a.date)-new Date(b.date));}
+function addRace(){const n=document.getElementById('rn').value.trim();const d=document.getElementById('rd').value;if(!n||!d){alert('Give me a name and a date.');return;}let custom=[];try{custom=JSON.parse(localStorage.getItem('app_races')||'[]');}catch(e){}custom.push({id:'c'+Date.now(),name:n,meta:'Race',date:d});localStorage.setItem('app_races',JSON.stringify(custom));document.getElementById('rn').value='';document.getElementById('rd').value='';renderRaces();}
+function removeRace(id){let custom=[];try{custom=JSON.parse(localStorage.getItem('app_races')||'[]');}catch(e){}localStorage.setItem('app_races',JSON.stringify(custom.filter(r=>r.id!==id)));renderRaces();}
+function renderRaces(){
+  const races=loadRaces();const box=document.getElementById('raceCards');
+  if(!races.length){box.innerHTML='<div class="card muted">No races yet — add one below and it starts counting down.</div>';return;}
+  box.innerHTML=races.map(r=>`
+    <div class="card race" data-date="${r.date}">
+      <button class="rm" onclick="removeRace('${r.id}')" title="Remove">✕</button>
+      <div class="rtag">Race</div>
+      <div class="rname">${r.name}</div>
+      <div class="rmeta">${new Date(r.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>
+      <div class="clock">
+        <div class="u"><div class="n" data-d>–</div><div class="l">days</div></div>
+        <div class="u"><div class="n" data-h>–</div><div class="l">hrs</div></div>
+        <div class="u"><div class="n" data-m>–</div><div class="l">min</div></div>
+        <div class="u"><div class="n" data-s>–</div><div class="l">sec</div></div>
+      </div>
+      <div class="rweeks" data-w></div>
+    </div>`).join('');
+}
+function tickRaces(){document.querySelectorAll('#raceCards .race').forEach(el=>{const diff=new Date(el.dataset.date+'T06:00:00')-new Date();const w=el.querySelector('[data-w]');if(diff<=0){el.querySelector('.clock').innerHTML='<div style="font-weight:750;color:var(--good);padding:6px 0">🏁 Race day — go get it.</div>';w.innerHTML='';return;}const s=Math.floor(diff/1e3)%60,m=Math.floor(diff/6e4)%60,h=Math.floor(diff/36e5)%24,d=Math.floor(diff/864e5);el.querySelector('[data-d]').textContent=d;el.querySelector('[data-h]').textContent=String(h).padStart(2,'0');el.querySelector('[data-m]').textContent=String(m).padStart(2,'0');el.querySelector('[data-s]').textContent=String(s).padStart(2,'0');w.innerHTML=`<b>${(d/7).toFixed(1)}</b> weeks to go`;});}
+
+/* ---------- load / fatigue model ---------- */
+function buildModel(acts){const byDay={};let minD=null;acts.forEach(a=>{const day=(a.start_local||'').slice(0,10);if(!day)return;const load=(a.summary&&a.summary.relative_effort)||0;byDay[day]=(byDay[day]||0)+load;if(!minD||day<minD)minD=day;});const today=ymd(new Date());const start=new Date((minD||today)+'T00:00:00');const end=new Date(today+'T00:00:00');const days=[];for(let t=new Date(start);t<=end;t.setDate(t.getDate()+1))days.push(ymd(t));const totalLoad=Object.values(byDay).reduce((a,b)=>a+b,0);const seed=totalLoad/Math.max(days.length,1);let ctl=seed,atl=seed;const series=[];days.forEach(day=>{const load=byDay[day]||0;ctl=ctl+(load-ctl)/42;atl=atl+(load-atl)/7;series.push({day,ctl,atl,tsb:ctl-atl,load});});return {series,byDay,last:series[series.length-1]||{ctl:0,atl:0,tsb:0}};}
+function windowSum(acts,daysBack,offset=0){const now=new Date();const hi=new Date(now);hi.setDate(hi.getDate()-offset);const lo=new Date(now);lo.setDate(lo.getDate()-offset-daysBack);const out={};let swim=0;acts.forEach(a=>{const dt=new Date((a.start_local||'')+ (a.start_local&&a.start_local.length<=10?'T00:00:00':''));if(dt>lo&&dt<=hi){const b=sportBucket(a.sport_type);const su=a.summary||{};out[b]=out[b]||{dist:0,time:0,load:0,n:0};out[b].dist+=su.distance||0;out[b].time+=su.moving_time||0;out[b].load+=su.relative_effort||0;out[b].n++;if(b==='Swim')swim++;}});return {out,swim};}
+
+function renderGauges(m){const {ctl,atl,tsb}=m.last;const g=document.getElementById('gauges');g.innerHTML=`
+    <div class="card gauge"><div class="big" style="color:var(--peacock)">${ctl.toFixed(0)}</div><div class="cap">Fitness (CTL)</div><div class="desc">chronic 42-day load</div></div>
+    <div class="card gauge"><div class="big" style="color:${atl>ctl?'var(--warn)':'var(--ink)'}">${atl.toFixed(0)}</div><div class="cap">Fatigue (ATL)</div><div class="desc">acute 7-day load</div></div>
+    <div class="card gauge"><div class="big" style="color:${tsb>=-10?'var(--good)':tsb>=-25?'var(--warn)':'var(--bad)'}">${tsb>0?'+':''}${tsb.toFixed(0)}</div><div class="cap">Form (TSB)</div><div class="desc">fitness − fatigue</div></div>`;
+  let label,color,txt;
+  if(tsb>8){label='Fresh';color='#e9f7f0';txt='Well-rested — room to add quality or intensity. Don’t waste the freshness on junk miles.';}
+  else if(tsb>=-10){label='Balanced';color='#e9f7f0';txt='Load and recovery in equilibrium. A solid place to hold and build steadily.';}
+  else if(tsb>=-25){label='Productive build';color='#fff5e9';txt='Carrying useful fatigue — this is where fitness is made. Keep easy days genuinely easy.';}
+  else{label='High fatigue';color='#fdece9';txt='Deep in the hole. Guard recovery hard and get a de-load in before it costs you.';}
+  document.getElementById('stateBox').innerHTML=`<div class="state" style="background:${color}">${label} — ${txt}</div>`;
+}
+function renderWeek(acts){const cur=windowSum(acts,7,0),prev=windowSum(acts,7,7);const order=['Run','Bike','Swim','Other'];let html='';order.forEach(b=>{const c=cur.out[b];if(!c)return;const p=prev.out[b];const dl=p?c.load-p.load:c.load;const arrow=dl>0?`<span class="delta up">▲${Math.abs(dl).toFixed(0)}</span>`:dl<0?`<span class="delta dn">▼${Math.abs(dl).toFixed(0)}</span>`:'';html+=`<div class="stat"><span class="dot" style="background:${sportColor(b)}"></span><span class="sname">${b}</span><span class="sval"><b>${c.n}</b> sess · <b>${fmtKm(c.dist)}</b>km · <b>${fmtHrs(c.time)}</b> · load <b>${c.load.toFixed(0)}</b>${arrow}</span></div>`;});const totLoad=Object.values(cur.out).reduce((a,x)=>a+x.load,0);const ptot=Object.values(prev.out).reduce((a,x)=>a+x.load,0);html+=`<div class="stat"><span class="dot" style="background:var(--ink)"></span><span class="sname">Total load</span><span class="sval"><b>${totLoad.toFixed(0)}</b> vs ${ptot.toFixed(0)} prior 7d</span></div>`;const sw14=windowSum(acts,14,0).swim;if(sw14===0)html+=`<div class="flag">⚠️ No swim logged in 14 days — often the weak link. One pool session this week closes the gap.</div>`;document.getElementById('weekStats').innerHTML=html||'<div class="muted">No activity in the last 7 days.</div>';}
+function renderTrend(m){const weeks=[];const now=new Date();const mondayThis=new Date(now);const dow=(mondayThis.getDay()+6)%7;mondayThis.setDate(mondayThis.getDate()-dow);mondayThis.setHours(0,0,0,0);for(let i=7;i>=0;i--){const s=new Date(mondayThis);s.setDate(s.getDate()-i*7);const e=new Date(s);e.setDate(e.getDate()+7);let load=0;for(const [day,v] of Object.entries(m.byDay)){const d=new Date(day+'T00:00:00');if(d>=s&&d<e)load+=v;}weeks.push({label:s.toLocaleDateString('en-GB',{day:'numeric',month:'short'}),load});}const ctx=document.getElementById('trend');if(!window.Chart){ctx.parentElement.innerHTML='<div class="muted">Chart unavailable.</div>';return;}new Chart(ctx,{type:'bar',data:{labels:weeks.map(w=>w.label),datasets:[{label:'Weekly load',data:weeks.map(w=>Math.round(w.load)),backgroundColor:'#039be5',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#eef2f6'}},x:{grid:{display:false}}}}});}
+
+/* ---------- schedule (keyword-based, generic) ---------- */
+const TRAIN_IN=/\b(run|ride|swim|brick|track|bike|base|z2|threshold|tempo|interval|long run|easy run|cycling|jog|workout|session|intervals|long ride)\b/i;
+const TRAIN_OUT=/work|meeting|standup|lunch|dinner|call|flight|hotel|birthday|not training|appointment|doctor|dentist/i;
+function sessStatus(){try{return JSON.parse(localStorage.getItem('app_sess')||'{}');}catch(e){return{};}}
+function setSess(id,st){const s=sessStatus();if(st)s[id]=st;else delete s[id];localStorage.setItem('app_sess',JSON.stringify(s));renderSchedule();renderToday();}
+function toggleHidden(){SHOW_HIDDEN=!SHOW_HIDDEN;renderSchedule();}
+function isTrainingSession(e){const nm=e.summary||'';const s=e.start&&(e.start.dateTime||e.start.date);if(!s)return false;return TRAIN_IN.test(nm)&&!TRAIN_OUT.test(nm);}
+function sessionBucket(name){name=name||'';if(/swim/i.test(name))return'Swim';if(/run|brick|track|jog/i.test(name))return'Run';if(/ride|bike|base|spin|zwift|cycl/i.test(name))return'Bike';return'Other';}
+function autoDoneSet(){const set=new Set();const today=ymd(new Date());const byDate={};ACTS.forEach(a=>{const d=(a.start_local||'').slice(0,10);if(!d)return;(byDate[d]=byDate[d]||new Set()).add(sportBucket(a.sport_type));});EVENTS.forEach(e=>{if(!isTrainingSession(e))return;const s=e.start&&(e.start.dateTime||e.start.date);if(!s)return;const d=s.slice(0,10);if(d>today)return;if(byDate[d]&&byDate[d].has(sessionBucket(e.summary)))set.add(e.id);});return set;}
+function effStatus(id,st,AUTO){const m=st[id];if(m==='skip')return'skip';if(m==='done')return'done';if(AUTO.has(id))return'auto';return'';}
+function renderSchedule(){const now=new Date();const st=sessStatus();const AUTO=autoDoneSet();const all=EVENTS.filter(e=>{if(!isTrainingSession(e))return false;const when=new Date(e.start.dateTime||(e.start.date+'T00:00:00'));return when>=new Date(now.getTime()-864e5);}).sort((a,b)=>new Date(a.start.dateTime||a.start.date)-new Date(b.start.dateTime||b.start.date));const mon=new Date();const dw=(mon.getDay()+6)%7;mon.setDate(mon.getDate()-dw);mon.setHours(0,0,0,0);const sun=new Date(mon);sun.setDate(sun.getDate()+7);const wk=all.filter(e=>{const d=new Date(e.start.dateTime||e.start.date);return d>=mon&&d<sun;});const doneN=wk.filter(e=>{const es=effStatus(e.id,st,AUTO);return es==='done'||es==='auto';}).length;document.getElementById('compliance').innerHTML=`This week: <b style="color:var(--good)">${doneN}</b> done · ${wk.length} planned · <a href="#" onclick="toggleHidden();return false">${SHOW_HIDDEN?'hide':'show'} completed</a>`;const visible=all.filter(e=>SHOW_HIDDEN||effStatus(e.id,st,AUTO)==='').slice(0,14);if(!visible.length){document.getElementById('schedule').innerHTML='<div class="muted">Nothing outstanding — the board’s clear, or no training-named events on your calendar yet.</div>';return;}document.getElementById('schedule').innerHTML=visible.map(e=>{const dt=new Date(e.start.dateTime||(e.start.date+'T00:00:00'));const time=e.start.dateTime?dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'all-day';const desc=(e.description||'').split(/[.\n]/)[0];const es=effStatus(e.id,st,AUTO);const strike=es?'opacity:.5;text-decoration:line-through':'';const tag=es==='auto'?'<span class="muted" style="font-size:11px"> · ✓ matched on Strava</span>':'';const manual=st[e.id];return `<div class="sess"><div class="when"><div class="d">${dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div><div class="t">${time}</div></div><div class="sbar" style="background:${sportColor(e.summary)}"></div><div class="sinfo"><div class="stitle" style="${strike}">${e.summary}${tag}</div>${desc?`<div class="sdesc">${desc}.</div>`:''}<div class="sactions"><button class="mini done" onclick="setSess('${e.id}','${manual==='done'?'':'done'}')">${manual==='done'?'↺ undo':'✓ done'}</button><button class="mini" onclick="setSess('${e.id}','${manual==='skip'?'':'skip'}')">${manual==='skip'?'↺ undo':'⤫ skip'}</button></div></div></div>`;}).join('');}
+function renderSwimWatch(){let last=null;ACTS.forEach(a=>{if(sportBucket(a.sport_type)==='Swim'){const d=(a.start_local||'').slice(0,10);if(!last||d>last)last=d;}});const el=document.getElementById('swimwatch');if(!el)return;if(!last){el.innerHTML='<div class="state" style="background:#fdece9">🏊 No swim in your recent history — if triathlon’s the goal, that’s the gap to close.</div>';return;}const days=Math.floor((new Date()-new Date(last+'T00:00:00'))/864e5);const col=days>10?'#fdece9':days>6?'#fff5e9':'#e9f7f0';el.innerHTML=`<div class="state" style="background:${col}">🏊 Days since last swim: <b>${days}</b> · last ${new Date(last+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})}.</div>`;}
+function renderToday(){const today=ymd(new Date());const dEl=document.getElementById('todayDate');if(dEl)dEl.textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});const st=sessStatus();const AUTO=autoDoneSet();const planned=EVENTS.filter(e=>{if(!isTrainingSession(e))return false;const s=e.start&&(e.start.dateTime||e.start.date);return s&&s.slice(0,10)===today;}).sort((a,b)=>new Date(a.start.dateTime||a.start.date)-new Date(b.start.dateTime||b.start.date));const pd=document.getElementById('todayPlanned');if(pd){if(!planned.length)pd.innerHTML='<div class="muted">Nothing training-named on your calendar today.</div>';else pd.innerHTML=planned.map(e=>{const dt=new Date(e.start.dateTime||(e.start.date+'T00:00:00'));const time=e.start.dateTime?dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'all-day';const es=effStatus(e.id,st,AUTO);const done=es==='done'||es==='auto';return `<div class="todo"><span class="dot" style="background:${sportColor(e.summary)}"></span><span style="flex:1;${done?'opacity:.5;text-decoration:line-through':''}">${e.summary}</span><span class="muted">${time}${done?' ✓':''}</span></div>`;}).join('');}const doneActs=ACTS.filter(a=>(a.start_local||'').slice(0,10)===today);const dd=document.getElementById('todayDone');if(dd){if(!doneActs.length)dd.innerHTML='<div class="muted">Nothing logged yet today.</div>';else dd.innerHTML=doneActs.map(a=>{const su=a.summary||{};const b=sportBucket(a.sport_type);const dist=su.distance?`${fmtKm(su.distance)}km · `:'';return `<div class="todo"><span class="dot" style="background:${sportColor(a.sport_type)}"></span><span style="flex:1">${a.name||b}</span><span class="muted">${dist}${fmtHrs(su.moving_time||0)} · ${(su.relative_effort||0)} load</span></div>`;}).join('');}}
+function renderWins(){const cut=new Date();cut.setDate(cut.getDate()-7);let prs=0,ach=0;const rows=[];ACTS.forEach(a=>{const d=new Date((a.start_local||'').slice(0,10)+'T00:00:00');if(d>cut){const su=a.summary||{};prs+=su.pr_count||0;ach+=su.achievement_count||0;if((su.pr_count||0)>0)rows.push({name:a.name||sportBucket(a.sport_type),sport:a.sport_type,date:d,pr:su.pr_count,ach:su.achievement_count||0});}});rows.sort((x,y)=>y.pr-x.pr);const el=document.getElementById('wins');if(!el)return;let html=`<div style="display:flex;gap:26px;margin-bottom:12px"><div><span style="font-size:28px;font-weight:750;color:var(--peacock)">${prs}</span> <span class="muted">PRs · 7d</span></div><div><span style="font-size:28px;font-weight:750">${ach}</span> <span class="muted">achievements</span></div></div>`;if(!rows.length)html+='<div class="muted">No PRs in the last week.</div>';else html+=rows.slice(0,5).map(r=>`<div class="stat"><span class="dot" style="background:${sportColor(r.sport)}"></span><span class="sname">${r.name}</span><span class="sval"><b>${r.pr}</b> PR${r.pr>1?'s':''} · ${r.ach} ach · ${r.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>`).join('');el.innerHTML=html;}
+function renderBalance(){const cut=new Date();cut.setDate(cut.getDate()-28);const agg={Run:0,Bike:0,Swim:0,Other:0};ACTS.forEach(a=>{const d=new Date((a.start_local||'').slice(0,10)+'T00:00:00');if(d>cut)agg[sportBucket(a.sport_type)]+=(a.summary&&a.summary.relative_effort)||0;});const ctx=document.getElementById('balance');if(!ctx||!window.Chart)return;const cols={Run:'#f5972a',Bike:'#0284c7',Swim:'#12b3a6',Other:'#8a93a0'};const labels=Object.keys(agg).filter(k=>agg[k]>0);if(!labels.length)return;const total=labels.reduce((a,k)=>a+agg[k],0)||1;new Chart(ctx,{type:'doughnut',data:{labels:labels.map(k=>`${k} ${Math.round(agg[k]/total*100)}%`),datasets:[{data:labels.map(k=>Math.round(agg[k])),backgroundColor:labels.map(k=>cols[k]),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right'},title:{display:true,text:'Load share by discipline'}}}});}
+function renderReadiness(m){const el=document.getElementById('readiness');if(!el||!m)return;const races=loadRaces();const s=m.series;const now=s[s.length-1];const i14=Math.max(0,s.length-15);const rampWk=(now.ctl-s[i14].ctl)/2;let raceInfo='';if(races.length){const r=races[0];const wks=Math.max(0,(new Date(r.date+'T06:00:00')-new Date())/6048e5);const proj=Math.max(now.ctl,now.ctl+rampWk*wks*0.55);raceInfo=`<div><div class="k">Weeks to ${r.name}</div><div class="v">${wks.toFixed(1)}</div></div><div><div class="k">Projected fitness</div><div class="v">${proj.toFixed(0)}</div></div>`;}let verdict,col;if(rampWk>1.2){verdict='Building — fitness is trending up. Hold the progression.';col='#e9f7f0';}else if(rampWk>=-0.5){verdict='Holding — fitness is roughly flat. A real build block would push it up.';col='#fff5e9';}else{verdict='Slipping — fitness is drifting down. Prioritise consistency.';col='#fdece9';}el.innerHTML=`<div class="rk"><div><div class="k">Fitness now</div><div class="v" style="color:var(--peacock)">${now.ctl.toFixed(0)}</div></div><div><div class="k">Trend</div><div class="v">${rampWk>0?'+':''}${rampWk.toFixed(1)}<span class="muted" style="font-size:13px">/wk</span></div></div>${raceInfo}</div><div class="verdict" style="background:${col}">${verdict}</div>${races.length?'':'<div class="muted" style="margin-top:8px">Add a race above to see your projected fitness on race day.</div>'}`;}
+function renderTrendLine(m){const s=m.series.slice(-56);const ctx=document.getElementById('trendLine');if(!ctx||!window.Chart)return;new Chart(ctx,{type:'line',data:{labels:s.map(p=>p.day.slice(5)),datasets:[{label:'Fitness (CTL)',data:s.map(p=>+p.ctl.toFixed(1)),borderColor:'#0284c7',backgroundColor:'rgba(2,132,199,.08)',fill:true,tension:.3,pointRadius:0,borderWidth:2},{label:'Form (TSB)',data:s.map(p=>+p.tsb.toFixed(1)),borderColor:'#f5972a',fill:false,tension:.3,pointRadius:0,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},plugins:{legend:{position:'top'}},scales:{x:{ticks:{maxTicksLimit:8},grid:{display:false}},y:{grid:{color:'#eef2f6'}}}}});}
+function weekVolume(){const mon=new Date();const dw=(mon.getDay()+6)%7;mon.setDate(mon.getDate()-dw);mon.setHours(0,0,0,0);const out={Run:0,Bike:0,Swim:0};let swimN=0;ACTS.forEach(a=>{const d=new Date((a.start_local||'').slice(0,10)+'T00:00:00');if(d>=mon){const b=sportBucket(a.sport_type);if(b in out)out[b]+=((a.summary&&a.summary.distance)||0)/1000;if(b==='Swim')swimN++;}});return {out,swimN};}
+function renderVolume(){const {out,swimN}=weekVolume();const el=document.getElementById('volume');if(!el)return;function bar(label,km,lo,hi,unit){const pct=Math.min(100,km/hi*100);const loPct=lo/hi*100;const col=km>=lo?'var(--good)':km>=lo*0.6?'var(--warn)':'var(--bad)';const note=km>=lo?(km<=hi?'in range':'above range'):'below range';return `<div class="vol"><div class="top"><span>${label}</span><span><b>${km.toFixed(0)}</b> / ${lo}–${hi} ${unit} · ${note}</span></div><div class="track"><div class="zone" style="left:${loPct}%;right:0"></div><div class="fillv" style="width:${pct}%;background:${col}"></div></div></div>`;}el.innerHTML=bar('Bike',out.Bike,100,200,'km')+bar('Run',out.Run,30,40,'km')+`<div class="vol"><div class="top"><span>Swim</span><span><b>${swimN}</b> / 1 session · ${swimN>=1?'done':'outstanding'}</span></div><div class="track"><div class="fillv" style="width:${Math.min(100,swimN*100)}%;background:${swimN>=1?'var(--good)':'var(--bad)'}"></div></div></div><div class="muted" style="margin-top:6px">Week so far (Mon–Sun). Typical triathlon norms: 100–200km bike · ~30km run · 1 swim.</div>`;}
+
+/* ---------- athlete profile ---------- */
+function loadProfile(){try{return JSON.parse(localStorage.getItem('app_profile')||'{}');}catch(e){return{};}}
+function fillProfileInputs(){const p=loadProfile();['h','w','ftp'].forEach(k=>{const el=document.getElementById('pf_'+k);if(el&&p[k])el.value=p[k];});}
+function saveProfile(){const g=id=>{const el=document.getElementById(id);return el&&el.value!==''?+el.value:0;};localStorage.setItem('app_profile',JSON.stringify({h:g('pf_h'),w:g('pf_w'),ftp:g('pf_ftp')}));renderProfile();renderMealContext();}
+function avgDailyTrainKcal(){let t=0;const now=new Date();const lo=new Date(now);lo.setDate(lo.getDate()-7);(ACTS||[]).forEach(a=>{const d=new Date((a.start_local||'').slice(0,10)+'T00:00:00');if(d>lo)t+=(a.summary&&a.summary.total_calories)||0;});return t/7;}
+function maintenanceKcal(p){if(!p||!p.w||!p.h)return 0;const age=30;const bmr=10*p.w+6.25*p.h-5*age+5;return Math.round(bmr*1.35+avgDailyTrainKcal());}
+function renderProfile(){const p=loadProfile();const box=document.getElementById('pf_derived');const note=document.getElementById('pf_note');if(!box)return;const parts=[];if(p.w&&p.h)parts.push(['BMI',(p.w/Math.pow(p.h/100,2)).toFixed(1)]);if(p.ftp&&p.w)parts.push(['Power-to-weight',(p.ftp/p.w).toFixed(2)+' W/kg']);const kcal=maintenanceKcal(p);if(kcal)parts.push(['Est. fuel need','~'+kcal.toLocaleString()+' kcal/day']);box.innerHTML=parts.length?parts.map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join(''):'<div class="muted">Enter your height, weight and FTP — they feed the calorie targets in the meal planner.</div>';if(note){const n=[];if(p.ftp&&p.w){const wkg=p.ftp/p.w;n.push(wkg>=4?`${wkg.toFixed(2)} W/kg — a strong engine.`:wkg>=3?`${wkg.toFixed(2)} W/kg — a solid amateur base.`:`${wkg.toFixed(2)} W/kg — room to build.`);}note.innerHTML=n.join(' ');}}
+
+/* ---------- meal prep ---------- */
+const MEAL_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const MEAL_PLANS=[
+ { Mon:"B: Oats, banana, peanut butter + whey / L: Chicken + rice + extra veg / D: Grilled salmon, sweet potato, broccoli",
+   Tue:"REST · B: Greek yogurt, berries / L: Big salad + tofu/egg / D: Stir-fried chicken + veg, half rice",
+   Wed:"HARD · B: 3-egg omelette, toast, fruit / L: Teriyaki chicken rice bowl / D: Wholemeal bolognese + recovery shake",
+   Thu:"B: Overnight oats + yogurt / L: Fish + rice / D: Baked chicken, quinoa, roast veg",
+   Fri:"SWIM · B: PB-banana toast + eggs / L: Salmon poke bowl / D: Prawn + tofu stir-fry, rice",
+   Sat:"LONG · B: Pancakes, eggs, honey, banana / L: Chicken pasta salad / D: Grilled fish, sweet potato, greens",
+   Sun:"LONG · B: Big oats, banana, honey, whey / L: Chicken + rice + veg / D: Salmon, rice, veg + recovery shake",
+   grocery:"Oats, bananas, peanut butter, whey, Greek yogurt, berries, eggs, wholemeal bread + pasta, rice, quinoa, salmon, white fish, chicken, lean beef, tofu, prawns, sweet potato, broccoli, mixed veg, honey" },
+ { Mon:"B: Toast, scrambled eggs, avocado / L: Fish soup + rice / D: Baked chicken breast, brown rice, greens",
+   Tue:"REST · B: Protein smoothie / L: Grain bowl + veg / D: Steamed fish, tofu, greens, small rice",
+   Wed:"HARD · B: Oats, banana, honey, whey / L: Chicken teriyaki bowl / D: Prawn pasta + recovery shake",
+   Thu:"B: Greek yogurt, granola, fruit / L: Chicken, mash, salad / D: Beef + broccoli stir-fry, rice",
+   Fri:"SWIM · B: Peanut butter oats + egg / L: Tuna wrap + fruit / D: Grilled salmon, quinoa, veg",
+   Sat:"LONG · B: French toast, eggs, banana / L: Rice + grilled chicken / D: Chicken pasta, salad",
+   Sun:"LONG · B: Big oats, honey, whey, banana / L: Fish + rice / D: Teriyaki chicken bowl + shake",
+   grocery:"Bread + pasta, eggs, avocado, whey, Greek yogurt, granola, oats, bananas, berries, brown rice, quinoa, salmon, white fish, tuna, chicken, lean beef, prawns, tofu, greens, broccoli, peanut butter, honey" }
+];
+function isoWeekIdx(){const d=new Date();const oneJan=new Date(d.getFullYear(),0,1);return Math.ceil((((d-oneJan)/86400000)+oneJan.getDay()+1)/7);}
+function mealIdx(){const i=parseInt(localStorage.getItem('app_meal_idx')||'0',10);return isNaN(i)?0:i;}
+function loadMeals(){try{return JSON.parse(localStorage.getItem('app_meals')||'{}');}catch(e){return{};}}
+function saveMeals(){const m=loadMeals();MEAL_DAYS.forEach(d=>{const el=document.getElementById('meal_'+d);if(el)m[d]=el.value;});const g=document.getElementById('meal_grocery');if(g)m.grocery=g.value;localStorage.setItem('app_meals',JSON.stringify(m));}
+const SWAP_MAP={'greek yogurt':['cottage cheese','kefir','protein smoothie'],'yogurt':['cottage cheese','kefir','protein smoothie'],'tuna':['salmon','chicken','mackerel'],'salmon':['chicken','white fish','tofu'],'white fish':['chicken','tofu'],'fish':['chicken','tofu'],'prawns':['chicken','tofu','squid'],'prawn':['chicken','tofu','squid'],'shellfish':['chicken','tofu'],'beef':['chicken','turkey','tofu'],'lean beef':['chicken','turkey','tofu'],'pork':['chicken','turkey'],'chicken':['tofu','turkey','tempeh','fish'],'turkey':['chicken','tofu'],'eggs':['tofu scramble','protein shake'],'egg':['tofu','protein shake'],'tofu':['chicken','tempeh','chickpeas'],'tempeh':['tofu','chicken'],'milk':['oat milk','soy milk'],'dairy':['oat milk'],'cheese':['avocado'],'peanut butter':['almond butter','seeds'],'peanut':['almond','seeds'],'nuts':['seeds']};
+function loadAvoid(){return (localStorage.getItem('app_meal_avoid')||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);}
+function pickSwap(term,avoid){const cands=SWAP_MAP[term]||[];for(const c of cands){if(!avoid.some(a=>c.toLowerCase().includes(a)))return c;}return cands[0]||'an alternative';}
+function applyExclusions(text,avoid){if(!text||!avoid.length)return text;let out=text;[...avoid].sort((a,b)=>b.length-a.length).forEach(term=>{if(!term)return;const swap=pickSwap(term,avoid);out=out.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),swap);});return out;}
+function saveAvoid(){const el=document.getElementById('meal_avoid');localStorage.setItem('app_meal_avoid',el?el.value:'');applyPlan(mealIdx());renderMeals();renderMealContext();}
+function applyPlan(idx){const n=((idx%MEAL_PLANS.length)+MEAL_PLANS.length)%MEAL_PLANS.length;const p=MEAL_PLANS[n];const avoid=loadAvoid();const m={};MEAL_DAYS.forEach(d=>m[d]=applyExclusions(p[d],avoid));m.grocery=applyExclusions(p.grocery,avoid);localStorage.setItem('app_meals',JSON.stringify(m));localStorage.setItem('app_meal_idx',String(n));}
+function seedMeals(){const wk=String(isoWeekIdx());const savedWk=localStorage.getItem('app_meal_week');const m=loadMeals();const has=MEAL_DAYS.some(d=>(m[d]||'').trim());if(!has||savedWk!==wk){applyPlan(isoWeekIdx());localStorage.setItem('app_meal_week',wk);}}
+function renderMeals(){const m=loadMeals();const box=document.getElementById('meals');if(!box)return;box.innerHTML=MEAL_DAYS.map(d=>`<div class="meal"><span class="mday">${d}</span><input id="meal_${d}" oninput="saveMeals()" placeholder="—" value="${(m[d]||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"></div>`).join('');const g=document.getElementById('meal_grocery');if(g)g.value=m.grocery||'';}
+function renderMealContext(){const el=document.getElementById('mealctx');if(!el)return;const p=loadProfile();const kcal=maintenanceKcal(p);let emphasis='balanced',form=null,load7=0;if(MODEL&&MODEL.last)form=Math.round(MODEL.last.tsb);if(MODEL&&MODEL.byDay){const now=new Date();const lo=new Date(now);lo.setDate(lo.getDate()-7);for(const[day,v]of Object.entries(MODEL.byDay)){const d=new Date(day+'T00:00:00');if(d>lo)load7+=v;}}if(form!==null){if(form<=-20)emphasis='recovery + high-carb';else if(form<=-10)emphasis='high-carb build';else if(form<=8)emphasis='balanced';else emphasis='lean / maintenance';}const bits=[`<b>This week:</b> ${emphasis}`];if(form!==null)bits.push(`form ${form>0?'+':''}${form}`);if(load7)bits.push(`7-day load ${Math.round(load7)}`);if(kcal)bits.push(`~${kcal.toLocaleString()} kcal/day`);const avoid=loadAvoid();let html=bits.join(' · ')+(p.w?'':' <span class="muted">— add your weight in Athlete Metrics for a calorie target</span>');if(avoid.length)html+=`<div class="muted" style="margin-top:5px">Avoiding: ${avoid.join(', ')} — swapped out across the week.</div>`;el.innerHTML=html;}
+function generateMeals(){const btn=document.getElementById('mealgen');applyPlan(mealIdx()+1);renderMeals();renderMealContext();if(btn){const o=btn.textContent;btn.textContent='✓ Fresh week in';setTimeout(()=>{btn.textContent=o;},1400);}}
+
+/* ---------- feedback ---------- */
+function fallbackAdvice(m,acts){const {tsb}=m.last;const sw14=windowSum(acts,14,0).swim;const c=windowSum(acts,7,0).out;const tips=[];if(sw14===0)tips.push('No swim in the data — if triathlon’s the target, one weekly pool session is the highest-leverage, lowest-fatigue time to buy back.');if(tsb<-25)tips.push('Heavy fatigue right now. Resist adding volume — bank a de-load and let form rebound.');else if(tsb<-10)tips.push('Productive fatigue, exactly where a build should sit. Keep easy days truly aerobic.');else tips.push('Form is fresh — spend it on one quality session, not extra easy volume.');const runL=(c.Run&&c.Run.load)||0,bikeL=(c.Bike&&c.Bike.load)||0;if(runL>bikeL*1.1)tips.push('Run load is outrunning the bike — keep the diesel engine ticking.');else tips.push('Bike–run balance looks sane. Anchor one hard session + one long, build easy around them.');return tips.map(t=>`<p>• ${t}</p>`).join('');}
+function renderAdvice(m,acts){document.getElementById('advice').innerHTML=fallbackAdvice(m,acts);}
+
+/* ---------- onboarding + boot ---------- */
+function showGate(me){
+  document.getElementById('cockpit').style.display='none';
+  document.getElementById('gate').style.display='flex';
+  const cs=document.getElementById('cs'), cg=document.getElementById('cg');
+  if(me&&me.strava){cs.className='connectbtn done';cs.textContent='Strava connected ✓';cs.removeAttribute('href');}
+  if(me&&me.google){cg.className='connectbtn done';cg.textContent='Google Calendar connected ✓';cg.removeAttribute('href');}
+  if(me&&me.strava&&!me.google)document.getElementById('gatemsg').textContent='One more — connect Google Calendar to see your planned sessions.';
+  if(me&&!me.strava&&me.google)document.getElementById('gatemsg').textContent='One more — connect Strava to pull your activities.';
+}
+function renderStatus(){
+  document.getElementById('statusbar').innerHTML=`<span class="pill">Strava ✓</span><span class="pill">Google ✓</span> · <a href="/api/logout">Disconnect</a> · <a href="mailto:brodinsng@gmail.com?subject=Training%20Cockpit%20feedback">Send feedback</a>`;
+}
+(async()=>{
+  let me={};
+  try{me=await fetch('/api/me').then(r=>r.json());}catch(e){}
+  if(!(me.strava&&me.google)){showGate(me);return;}
+  document.getElementById('gate').style.display='none';
+  document.getElementById('cockpit').style.display='';
+  renderStatus();
+  renderRaces();tickRaces();setInterval(tickRaces,1000);
+  fillProfileInputs();renderProfile();seedMeals();renderMeals();renderMealContext();
+  const a=document.getElementById('meal_avoid');if(a)a.value=localStorage.getItem('app_meal_avoid')||'';
+  try{
+    const [aRaw,cRaw]=await Promise.all([fetch('/api/u/activities').then(r=>r.json()),fetch('/api/u/events').then(r=>r.json())]);
+    if((aRaw&&aRaw.needAuth)||(cRaw&&cRaw.needAuth)){showGate(me);return;}
+    if(aRaw&&aRaw.error)throw new Error('Strava — '+(aRaw.error.status||aRaw.error));
+    if(cRaw&&cRaw.error)throw new Error('Calendar — '+(cRaw.error.status||cRaw.error));
+    ACTS=(aRaw&&aRaw.activities)||[];EVENTS=(cRaw&&cRaw.events)||[];
+    if(!ACTS.length){document.getElementById('gauges').innerHTML='<div class="card err">No Strava activities found on your account yet.</div>';}
+    else{const m=buildModel(ACTS);MODEL=m;renderGauges(m);renderSwimWatch();renderReadiness(m);renderWeek(ACTS);renderTrend(m);renderTrendLine(m);renderBalance();renderVolume();renderWins();renderAdvice(m,ACTS);}
+    renderProfile();renderMealContext();renderToday();renderSchedule();
+    document.getElementById('sub').textContent=`Live as of ${new Date().toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${ACTS.length} activities read`;
+    document.getElementById('foot').innerHTML='Load model: relative effort → CTL (fitness, 42d) / ATL (fatigue, 7d) / TSB (form). Sessions read from your Google Calendar by name. Reload to refresh · <a href="/api/logout">disconnect</a>.';
+  }catch(e){
+    document.getElementById('sub').innerHTML='<span class="err">Couldn’t load your data: '+e.message+'. If you just connected, try reloading. If it persists, your Google account may need to be added as a test user.</span>';
+  }
+})();
+</script>
+</body>
+</html>
