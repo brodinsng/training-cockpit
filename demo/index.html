@@ -247,7 +247,8 @@ function makeDemoData(){
   function ev(off,h,mi,dur,summary,colorId,desc){
     const s=new Date(mon);s.setDate(s.getDate()+off);s.setHours(h,mi,0,0);
     const e=new Date(s.getTime()+dur*60000);
-    events.push({id:'e'+(eid++),summary,description:desc||'',colorId,start:{dateTime:s.toISOString(),timeZone:TZ},end:{dateTime:e.toISOString(),timeZone:TZ}});
+    const iso=x=>`${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}:00+08:00`;
+    events.push({id:'e'+(eid++),summary,description:desc||'',colorId,start:{dateTime:iso(s),timeZone:TZ},end:{dateTime:iso(e),timeZone:TZ}});
   }
   ev(0,19,0,60,'Easy Run','7','Zone 2 aerobic');
   ev(2,6,0,75,'FIVE45 Intervals','7','Bike intensity anchor');
