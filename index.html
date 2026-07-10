@@ -145,6 +145,7 @@
     <div id="checkin"></div>
     <div class="readi" id="readi"></div>
     <div id="todaycall"></div>
+    <div id="autoadjust"></div>
   </div>
 
   <h2>Fitness · Fatigue · Form</h2>
@@ -683,7 +684,21 @@ function fallbackAdvice(m,acts){
 const CHK_METRICS=[{k:'legs',label:'Legs',lo:'Wrecked',hi:'Fresh'},{k:'sleep',label:'Sleep',lo:'Poor',hi:'Great'},{k:'sore',label:'Soreness',lo:'Very sore',hi:'None'},{k:'head',label:'Headspace',lo:'Foggy',hi:'Sharp'},{k:'mot',label:'Motivation',lo:'Low',hi:'High'}];
 function chkKey(){return 'gideon_checkin_'+ymd(new Date());}
 function loadCheckin(){try{return JSON.parse(localStorage.getItem(chkKey())||'{}');}catch(e){return{};}}
-function setCheck(k,v){const c=loadCheckin();c[k]=v;localStorage.setItem(chkKey(),JSON.stringify(c));renderCheckin();renderReadyBadge();renderTodaysCall();renderMealContext();renderAdvice(MODEL,ACTS);}
+function setCheck(k,v){const c=loadCheckin();c[k]=v;localStorage.setItem(chkKey(),JSON.stringify(c));renderCheckin();renderReadyBadge();renderTodaysCall();renderMealContext();renderAdvice(MODEL,ACTS);maybeAutoAdjust();}
+function checkinComplete(){const c=loadCheckin();return CHK_METRICS.every(m=>c[m.k]);}
+function maybeAutoAdjust(){
+  const el=document.getElementById('autoadjust');if(!el)return;
+  if(!checkinComplete()){el.innerHTML='';return;}
+  const sub=checkinScore();const level=sub<=2.5?'red':(sub<=3.4?'amber':'green');
+  if(level==='green'){el.innerHTML='<div class="muted" style="margin-top:6px">Green day — leaving your calendar as-is.</div>';return;}
+  if(localStorage.getItem('gideon_adj_'+ymd(new Date()))===level){return;}
+  el.innerHTML='<div class="muted" style="margin-top:6px">Adjusting today’s session on your calendar…</div>';
+  fetch('/api/adjust?readiness='+level).then(r=>r.json()).then(r=>{
+    if(r.changed){localStorage.setItem('gideon_adj_'+ymd(new Date()),level);el.innerHTML=`<div style="margin-top:8px;font-size:13px;color:var(--good)">✓ ${r.message} <span class="muted">— edit the event to override.</span></div>`;}
+    else if(r.error){el.innerHTML=`<div class="muted" style="margin-top:8px">⚠️ Couldn’t auto-adjust: ${r.error}.</div>`;}
+    else{el.innerHTML=`<div class="muted" style="margin-top:8px">${r.message||''}</div>`;}
+  }).catch(()=>{el.innerHTML='';});
+}
 function renderCheckin(){const c=loadCheckin();const box=document.getElementById('checkin');if(!box)return;box.innerHTML=CHK_METRICS.map(m=>`<div class="chk"><div class="lbl">${m.label}<span>${m.lo} → ${m.hi}</span></div><div class="seg">${[1,2,3,4,5].map(v=>`<button class="${c[m.k]===v?'on':''}" onclick="setCheck('${m.k}',${v})">${v}</button>`).join('')}</div></div>`).join('');}
 function checkinScore(){const c=loadCheckin();const vals=CHK_METRICS.map(m=>c[m.k]).filter(v=>v);if(!vals.length)return null;return vals.reduce((a,b)=>a+b,0)/vals.length;}
 function renderReadyBadge(){const el=document.getElementById('readi');if(!el)return;const sub=checkinScore();const tsb=MODEL&&MODEL.last?MODEL.last.tsb:null;if(sub===null){el.style.background='#f3f6f9';el.innerHTML='<span class="muted">Tap a number for each, sir — your check-in tailors today’s coaching, fuelling and session call to how you actually feel.</span>';return;}let obj=3;if(tsb!=null){obj=tsb>5?5:tsb>-10?4:tsb>-20?3:tsb>-30?2:1;}const readiness=sub*0.6+obj*0.4;let label,bg;if(readiness>=4){label='Green — good to go';bg='#e9f7f0';}else if(readiness>=2.8){label='Amber — proceed with care';bg='#fff5e9';}else{label='Red — back off today';bg='#fdece9';}el.style.background=bg;el.innerHTML=`Readiness: <b>${label}</b> · you feel <b>${sub.toFixed(1)}/5</b>${tsb!=null?` · form ${tsb>0?'+':''}${Math.round(tsb)}`:''}`;}
