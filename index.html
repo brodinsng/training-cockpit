@@ -109,6 +109,13 @@
   .derived .k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
   .derived .v{font-size:20px;font-weight:750;margin-top:2px}
   .mealctx{background:var(--sky);border-radius:10px;padding:10px 13px;font-size:13px;margin-bottom:12px;line-height:1.5}
+  .chk{margin:12px 0}
+  .chk .lbl{font-size:12.5px;font-weight:650;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  .chk .lbl span{color:var(--mut);font-weight:500;font-size:11px}
+  .seg{display:flex;gap:6px}
+  .seg button{flex:1;border:1px solid var(--line);background:#fff;color:var(--mut);border-radius:8px;padding:9px 0;font-weight:700;font-size:13px;cursor:pointer}
+  .seg button.on{background:var(--peacock);color:#fff;border-color:var(--peacock)}
+  .readi{margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:600;background:#f3f6f9}
 </style>
 </head>
 <body>
@@ -131,6 +138,13 @@
   <div class="grid2">
     <div class="card"><div class="cap2">Planned</div><div id="todayPlanned"><div class="loading">…</div></div></div>
     <div class="card"><div class="cap2">Logged on Strava</div><div id="todayDone"><div class="loading">…</div></div></div>
+  </div>
+
+  <h2>Daily Check-in · how do you feel today?</h2>
+  <div class="card">
+    <div id="checkin"></div>
+    <div class="readi" id="readi"></div>
+    <div id="todaycall"></div>
   </div>
 
   <h2>Fitness · Fatigue · Form</h2>
@@ -411,12 +425,7 @@ function renderSchedule(){
     return `<div class="sess">
       <div class="when"><div class="d">${dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div><div class="t">${time}</div></div>
       <div class="sbar" style="background:${sportColor(e.summary)}"></div>
-      <div class="sinfo"><div class="stitle" style="${strike}">${e.summary}${tag}</div>${desc?`<div class="sdesc">${desc}.</div>`:''}
-        <div class="sactions">
-          <button class="mini done" onclick="setSess('${e.id}','${manual==='done'?'':'done'}')">${manual==='done'?'↺ undo':'✓ done'}</button>
-          <button class="mini" onclick="setSess('${e.id}','${manual==='skip'?'':'skip'}')">${manual==='skip'?'↺ undo':'⤫ skip'}</button>
-        </div>
-      </div>
+      <div class="sinfo"><div class="stitle" style="${strike}">${e.summary}${tag}</div>${desc?`<div class="sdesc">${desc}.</div>`:''}</div>
     </div>`;
   }).join('');
 }
@@ -642,7 +651,8 @@ function renderMealContext(){
     else if(form<=8)emphasis='balanced';
     else emphasis='lean / maintenance';
   }
-  const bits=[`<b>This week:</b> ${emphasis}`];
+  let adj='';const subM=checkinScore();if(subM!==null&&subM<=2.5){emphasis='recovery + high-carb';adj=' · adjusted for how you feel';}
+  const bits=[`<b>This week:</b> ${emphasis}${adj}`];
   if(form!==null)bits.push(`form ${form>0?'+':''}${form}`);
   if(load7)bits.push(`7-day load ${Math.round(load7)}`);
   if(kcal)bits.push(`~${kcal.toLocaleString()} kcal/day`);
@@ -669,16 +679,24 @@ function fallbackAdvice(m,acts){
   else tips.push('Bike–run balance looks sane. Keep the Wed FIVE45 intensity and Sun CCP brick as your fixed quality anchors and build easy volume around them.');
   return tips.map(t=>`<p>• ${t}</p>`).join('');
 }
-function renderAdvice(m,acts){
-  const el=document.getElementById('advice');
-  el.innerHTML=fallbackAdvice(m,acts);
-}
+/* ---------- daily check-in (subjective readiness → tailors coach, meals & today's call) ---------- */
+const CHK_METRICS=[{k:'legs',label:'Legs',lo:'Wrecked',hi:'Fresh'},{k:'sleep',label:'Sleep',lo:'Poor',hi:'Great'},{k:'sore',label:'Soreness',lo:'Very sore',hi:'None'},{k:'head',label:'Headspace',lo:'Foggy',hi:'Sharp'},{k:'mot',label:'Motivation',lo:'Low',hi:'High'}];
+function chkKey(){return 'gideon_checkin_'+ymd(new Date());}
+function loadCheckin(){try{return JSON.parse(localStorage.getItem(chkKey())||'{}');}catch(e){return{};}}
+function setCheck(k,v){const c=loadCheckin();c[k]=v;localStorage.setItem(chkKey(),JSON.stringify(c));renderCheckin();renderReadyBadge();renderTodaysCall();renderMealContext();renderAdvice(MODEL,ACTS);}
+function renderCheckin(){const c=loadCheckin();const box=document.getElementById('checkin');if(!box)return;box.innerHTML=CHK_METRICS.map(m=>`<div class="chk"><div class="lbl">${m.label}<span>${m.lo} → ${m.hi}</span></div><div class="seg">${[1,2,3,4,5].map(v=>`<button class="${c[m.k]===v?'on':''}" onclick="setCheck('${m.k}',${v})">${v}</button>`).join('')}</div></div>`).join('');}
+function checkinScore(){const c=loadCheckin();const vals=CHK_METRICS.map(m=>c[m.k]).filter(v=>v);if(!vals.length)return null;return vals.reduce((a,b)=>a+b,0)/vals.length;}
+function renderReadyBadge(){const el=document.getElementById('readi');if(!el)return;const sub=checkinScore();const tsb=MODEL&&MODEL.last?MODEL.last.tsb:null;if(sub===null){el.style.background='#f3f6f9';el.innerHTML='<span class="muted">Tap a number for each, sir — your check-in tailors today’s coaching, fuelling and session call to how you actually feel.</span>';return;}let obj=3;if(tsb!=null){obj=tsb>5?5:tsb>-10?4:tsb>-20?3:tsb>-30?2:1;}const readiness=sub*0.6+obj*0.4;let label,bg;if(readiness>=4){label='Green — good to go';bg='#e9f7f0';}else if(readiness>=2.8){label='Amber — proceed with care';bg='#fff5e9';}else{label='Red — back off today';bg='#fdece9';}el.style.background=bg;el.innerHTML=`Readiness: <b>${label}</b> · you feel <b>${sub.toFixed(1)}/5</b>${tsb!=null?` · form ${tsb>0?'+':''}${Math.round(tsb)}`:''}`;}
+function todayPlannedSession(){const today=ymd(new Date());const p=(EVENTS||[]).filter(e=>{if(!isTrainingSession(e))return false;const s=e.start&&(e.start.dateTime||e.start.date);return s&&s.slice(0,10)===today;});return p[0]||null;}
+function renderTodaysCall(){const el=document.getElementById('todaycall');if(!el)return;const sub=checkinScore();if(sub===null){el.innerHTML='';return;}const sess=todayPlannedSession();const nm=sess?sess.summary:null;const hard=nm&&/five45|ccp|threshold|interval|smash|track|tempo|long|brick/i.test(nm);let call;if(sub<=2.5){call=nm?`you’re flagging low — ${hard?`swap <b>${nm}</b> for easy Z2 or take the day off`:`keep <b>${nm}</b> genuinely easy, or rest`}. Recovery beats a junk session today.`:`low readiness — an easy shake-out or a full rest day, nothing that adds fatigue.`;}else if(sub>=4){call=nm?`green light — <b>${nm}</b> as planned${hard?', and you’ve licence to hit it':''}.`:`feeling good — a quality session is well spent today.`;}else{call=nm?`<b>${nm}</b> as planned, but keep the easy parts honest.`:`train as planned; easy stays easy.`;}el.innerHTML=`<div style="margin-top:10px;font-size:13.5px">🧭 <b>Today’s call:</b> ${call}</div>`;}
+function subjectiveTip(){const sub=checkinScore();const tsb=MODEL&&MODEL.last?MODEL.last.tsb:null;if(sub===null)return 'Fill in today’s check-in above, sir, and I’ll tailor this to how you actually feel — not just the numbers.';const feelBad=sub<=2.5,feelGood=sub>=4;const objTired=tsb!=null&&tsb<-15;if(feelBad&&objTired)return 'Both the data and your check-in agree — you’re cooked. Make today easy or rest; pushing now only digs the hole deeper.';if(feelBad&&!objTired)return `Your load looks OK${tsb!=null?` (form ${tsb>0?'+':''}${Math.round(tsb)})`:''}, but you’re flagging low — poor sleep or heavy legs override the model. Trust the body and soften today.`;if(feelGood&&objTired)return 'Form’s negative but you feel fresh — fine to train as planned, just keep the easy parts easy and stop if the legs turn.';if(feelGood&&!objTired)return 'Green across the board — feeling good and the load’s in a good place. A day to spend on quality.';return 'Balanced — nothing screaming. Train as planned and keep the easy days genuinely easy.';}
+function renderAdvice(m,acts){document.getElementById('advice').innerHTML='<p>• '+subjectiveTip()+'</p>'+(m?fallbackAdvice(m,acts):'');}
 
 /* ---------- boot ---------- */
 renderRaces();tickRaces();setInterval(tickRaces,1000);
 fillProfileInputs();renderProfile();
 (function(){const a=document.getElementById('meal_avoid');if(a)a.value=localStorage.getItem('gideon_meal_avoid')||'';})();
-seedMeals();renderMeals();renderMealContext();
+seedMeals();renderMeals();renderMealContext();renderCheckin();renderReadyBadge();
 (async()=>{
   try{
     const now=new Date();
@@ -697,7 +715,7 @@ seedMeals();renderMeals();renderMealContext();
     }
     renderProfile();renderMealContext();
     renderToday();
-    renderSchedule();
+    renderSchedule();renderReadyBadge();renderTodaysCall();
     document.getElementById('sub').textContent=`Live as of ${now.toLocaleString('en-GB',{timeZone:TZ,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · ${ACTS.length} activities read`;
     document.getElementById('foot').innerHTML='Load model: relative effort → CTL (fitness, 42d) / ATL (fatigue, 7d) / TSB (form). Schedule filtered to your sessions from the B&amp;G calendar. Pull down / reopen to refresh.';
   }catch(e){
