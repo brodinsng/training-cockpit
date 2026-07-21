@@ -1,12 +1,19 @@
-// GET /api/events  → next 21 days of events from the B&G calendar, mapped to the cockpit's shape.
-// Uses a stored Google refresh token (env var) to mint an access token server-side.
+// GET /api/events → next 21 days of events from the B&G calendar, mapped to the cockpit's shape.
+// Prefers the per-browser Google refresh token stored in the `g_rt` cookie (set by the
+// OAuth connect flow); falls back to the GOOGLE_REFRESH_TOKEN env var for compatibility.
 
-async function googleAccessToken(env) {
+function cookie(request, name) {
+  const c = request.headers.get('Cookie') || '';
+  const m = c.match(new RegExp('(?:^|; )' + name + '=([^;]+)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+async function googleAccessToken(env, refreshToken) {
   const body = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     client_secret: env.GOOGLE_CLIENT_SECRET,
     grant_type: 'refresh_token',
-    refresh_token: env.GOOGLE_REFRESH_TOKEN,
+    refresh_token: refreshToken,
   });
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -18,9 +25,15 @@ async function googleAccessToken(env) {
   return d.access_token;
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
   try {
-    const token = await googleAccessToken(env);
+    const refreshToken = cookie(request, 'g_rt') || env.GOOGLE_REFRESH_TOKEN;
+    if (!refreshToken) {
+      return new Response(JSON.stringify({ error: 'google not connected' }), {
+        status: 401, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const token = await googleAccessToken(env, refreshToken);
     const now = new Date();
     const end = new Date(now.getTime() + 21 * 864e5);
     const cal = encodeURIComponent(env.CAL_ID);
@@ -41,7 +54,7 @@ export async function onRequestGet({ env }) {
       description: e.description || '',
       start: e.start,
       end: e.end,
-      colorId: e.colorId || '',        // peacock (7) = Brodin's; anything else is his partner's
+      colorId: e.colorId || '', // peacock (7) = Brodin's; anything else is his partner's
       creatorEmail: (e.creator && e.creator.email) || '',
     }));
     return new Response(JSON.stringify({ events }), {
