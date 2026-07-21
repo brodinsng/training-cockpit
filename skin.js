@@ -30,10 +30,10 @@
       border-radius:18px !important;box-shadow:0 1px 0 rgba(255,255,255,.02) inset;}
     /* section headings — quieter, tighter, app-like */
     h2{color:var(--mut) !important;font-size:12px !important;letter-spacing:1.6px !important;
-      margin:30px 6px 12px !important;}
+      margin:30px 6px 12px !important;scroll-margin-top:74px !important;}
     .sub,.muted,.loading{color:var(--mut) !important;}
     /* the original page title is replaced by the sticky header */
-    .wrap>h1{display:none !important;}
+    .wrap h1{display:none !important;}
     .wrap>.sub:first-of-type{display:none !important;}
     /* big metric numbers — the heart of a "focused" dark dashboard */
     .gauge .big{font-size:46px !important;font-weight:800 !important;letter-spacing:-1px !important;
@@ -162,10 +162,7 @@
         b.innerHTML = '<span class="ic">' + d[1] + '</span>' + d[2];
         b.addEventListener('click', function () {
           if (key === 'today') { window.scrollTo({ top: 0, behavior: 'smooth' }); }
-          else if (targets[key]) {
-            var y = targets[key].getBoundingClientRect().top + window.pageYOffset - 64;
-            window.scrollTo({ top: y, behavior: 'smooth' });
-          }
+          else if (targets[key]) { targets[key].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
           setActive(key);
         });
         if (!targets[key] && key !== 'today') b.style.opacity = '.35';
