@@ -127,20 +127,25 @@
       if (sub) { sub.classList.add('s'); header.appendChild(sub); sub.style.display = ''; }
       document.body.appendChild(header);
 
-      /* find the anchor section headings for each tab (read-only) */
-      var h2s = Array.prototype.slice.call(document.querySelectorAll('.wrap h2'));
+      /* keywords per tab; anchors are looked up LIVE each time so section
+         re-renders can't leave us holding a stale (detached) reference */
+      var WORDS = {
+        today:    ['a-race', 'race countdown', 'today'],
+        fitness:  ['fatigue', 'fitness'],
+        schedule: ["what's next", 'schedule'],
+        fuel:     ['meal', 'fuel']
+      };
       function anchor(words) {
-        for (var i = 0; i < h2s.length; i++) {
-          var t = (h2s[i].textContent || '').toLowerCase();
-          for (var j = 0; j < words.length; j++) if (t.indexOf(words[j]) > -1) return h2s[i];
+        var hs = document.querySelectorAll('.wrap h2');
+        for (var i = 0; i < hs.length; i++) {
+          var t = (hs[i].textContent || '').toLowerCase();
+          for (var j = 0; j < words.length; j++) if (t.indexOf(words[j]) > -1) return hs[i];
         }
         return null;
       }
       var targets = {
-        today:    anchor(['a-race', 'race countdown', 'today']),
-        fitness:  anchor(['fatigue', 'fitness']),
-        schedule: anchor(["what's next", 'schedule']),
-        fuel:     anchor(['meal', 'fuel'])
+        today: anchor(WORDS.today), fitness: anchor(WORDS.fitness),
+        schedule: anchor(WORDS.schedule), fuel: anchor(WORDS.fuel)
       };
 
       /* if the dashboard isn't on screen (e.g. the connect screen), skip the bar */
@@ -162,7 +167,7 @@
         b.innerHTML = '<span class="ic">' + d[1] + '</span>' + d[2];
         b.addEventListener('click', function () {
           if (key === 'today') { window.scrollTo({ top: 0, behavior: 'smooth' }); }
-          else if (targets[key]) { targets[key].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+          else { var el = anchor(WORDS[key]); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
           setActive(key);
         });
         if (!targets[key] && key !== 'today') b.style.opacity = '.35';
@@ -186,7 +191,7 @@
           var mid = window.pageYOffset + 90;
           var pick = 'today';
           for (var i = 0; i < order.length; i++) {
-            var el = targets[order[i]];
+            var el = anchor(WORDS[order[i]]);
             if (el && el.offsetTop <= mid) { pick = order[i]; break; }
           }
           setActive(pick);
