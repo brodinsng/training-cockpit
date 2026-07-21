@@ -1,4 +1,6 @@
-// GET /api/u/events  → the LOGGED-IN user's Google Calendar (primary) for the next 21 days.
+// GET /api/u/events  → the configured B&G training calendar (CAL_ID) for the next 21 days,
+// authenticated with the logged-in user's g_rt cookie. Falls back to the primary calendar
+// only if CAL_ID is not set.
 function getCookie(req, name) {
   const c = req.headers.get('Cookie') || '';
   const m = c.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -13,7 +15,8 @@ export async function onRequestGet({ request, env }) {
     const td = await tr.json();
     if (!td.access_token) throw new Error('google token');
     const now = new Date(); const end = new Date(now.getTime() + 21 * 864e5);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=250`;
+    const cal = encodeURIComponent(env.CAL_ID || 'primary');
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${cal}/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=250`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${td.access_token}` } });
     if (!res.ok) return new Response(JSON.stringify({ error: 'google', status: res.status }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     const raw = await res.json();
