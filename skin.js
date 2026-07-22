@@ -509,7 +509,7 @@
   }
 
   /* ---- today's AI-tailored plan; refreshes for the new day (~3am rollover) ---- */
-  function gidDayKey() { var d = new Date(Date.now() - 3 * 3600 * 1000); return d.toISOString().slice(0, 10); }
+  function gidDayKey() { var d = new Date(Date.now() - 3 * 3600 * 1000); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }  // local-time 3am rollover (not UTC)
   function gidPlanContext() {
     function grab(sel, n) { return Array.prototype.slice.call(document.querySelectorAll(sel)).map(function (e) { return (e.textContent || '').trim().replace(/\s+/g, ' '); }).slice(0, n); }
     var g = grab('.gauge .big', 3), caps = grab('.gauge .cap', 3);
