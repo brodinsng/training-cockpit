@@ -46,8 +46,14 @@
     input::placeholder,textarea::placeholder{color:#5c6a7a !important;}
     /* buttons keep the accent but read on dark */
     .addform button,.genbtn,button{border-radius:10px !important;}
+    /* daily check-in 1-5 scale buttons were white with grey text (unreadable) */
+    .chk .seg button{background:#0e151d !important;color:var(--ink) !important;
+      border:1px solid var(--line) !important;border-radius:9px !important;}
+    .chk .seg button.on{background:var(--peacock) !important;border-color:var(--peacock) !important;
+      color:#06121b !important;font-weight:800 !important;}
+    .chk, .chk .lbl, .chk .lbl *{color:var(--ink) !important;}
     /* highlight chips (state/verdict/flag) were light — dark-ify with an accent edge */
-    .state,.verdict,.flag{background:#10171f !important;color:var(--ink) !important;
+    .state,.verdict,.flag,#readi{background:#10171f !important;color:var(--ink) !important;
       border:1px solid var(--line) !important;border-left:3px solid var(--peacock) !important;}
     .flag{border-left-color:var(--warn) !important;}
     /* dividers inside stat/session/todo rows */
@@ -207,4 +213,34 @@
   }
   /* rebuild once more shortly after load in case the dashboard mounts late */
   setTimeout(build, 1200);
+
+  /* ---------- 4. Ownership by calendar colour ----------
+     Brodin's training is peacock (colorId 7) or the calendar's default colour;
+     his partner's events are any other colour (e.g. purple) and must not count
+     as his. We wrap the app's isTrainingSession so only his sessions pass. */
+  (function () {
+    var orig = null;
+    function install() {
+      if (typeof window.isTrainingSession !== 'function') return false;
+      if (!window.__gideonOwnHook) {
+        orig = window.isTrainingSession;
+        window.isTrainingSession = function (e) {
+          var c = (e && e.colorId != null) ? String(e.colorId) : '';
+          return (c === '' || c === '7') && orig(e);   // '' = calendar default (peacock), '7' = peacock
+        };
+        window.__gideonOwnHook = true;
+      }
+      return true;
+    }
+    function rerender() {
+      try { window.renderSchedule && window.renderSchedule(); } catch (e) {}
+      try { window.renderToday && window.renderToday(); } catch (e) {}
+    }
+    if (!install()) {
+      var n = 0, iv = setInterval(function () { if (install() || ++n > 60) clearInterval(iv); }, 60);
+    }
+    /* re-render calendar-driven views after the app has loaded its events */
+    setTimeout(rerender, 1800);
+    setTimeout(rerender, 3400);
+  })();
 })();
