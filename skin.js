@@ -225,6 +225,8 @@
       if (!window.__gideonOwnHook) {
         orig = window.isTrainingSession;
         window.isTrainingSession = function (e) {
+          var nm = (e && e.summary) || '';
+          if (/\b(mma|pineapple)\b/i.test(nm)) return false;   // partner's MMA / Pineapple sessions
           var c = (e && e.colorId != null) ? String(e.colorId) : '';
           return (c === '' || c === '7') && orig(e);   // '' = calendar default (peacock), '7' = peacock
         };
