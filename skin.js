@@ -151,6 +151,7 @@
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
+  try { document.title = 'Cyprus'; } catch (e) {}   // renamed from Training Cockpit
 
   /* make /app/ installable as a PWA — the base page is missing these tags */
   [
@@ -159,7 +160,7 @@
     ['meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }],
     ['meta', { name: 'mobile-web-app-capable', content: 'yes' }],
     ['meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }],
-    ['meta', { name: 'apple-mobile-web-app-title', content: 'Cockpit' }]
+    ['meta', { name: 'apple-mobile-web-app-title', content: 'Cyprus' }]
   ].forEach(function (d) {
     var key = d[1].rel ? '[rel="' + d[1].rel + '"]' : '[name="' + d[1].name + '"]';
     if (document.head.querySelector(d[0] + key)) return;
@@ -251,7 +252,7 @@
         var header = document.createElement('div'); header.id = 'skinHeader';
         var tw = document.createElement('div'); tw.className = 'tw';
         var title = document.createElement('div'); title.className = 't';
-        title.innerHTML = '<span class="dot"></span>Training Cockpit';
+        title.innerHTML = '<span class="dot"></span>Cyprus';
         tw.appendChild(title);
         var sub = document.getElementById('sub');
         if (sub) { sub.classList.add('s'); tw.appendChild(sub); sub.style.display = ''; }

@@ -1,7 +1,7 @@
 {
-  "name": "Training Cockpit",
-  "short_name": "Cockpit",
-  "description": "Live triathlon training cockpit — fitness, fatigue, form, schedule and fuel.",
+  "name": "Cyprus",
+  "short_name": "Cyprus",
+  "description": "Your personal endurance training cockpit — fitness, fatigue, form, daily AI plan, schedule and fuel.",
   "start_url": "/app/",
   "scope": "/",
   "display": "standalone",
