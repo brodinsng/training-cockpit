@@ -102,6 +102,33 @@
     .gv-dots span:nth-child(2){animation-delay:.18s}.gv-dots span:nth-child(3){animation-delay:.36s}
     @keyframes gvb{0%,80%,100%{opacity:.25}40%{opacity:1}}
     .gv-intro{color:var(--mut);font-size:13px;line-height:1.6;}
+    /* bigger coach box */
+    .gv-compose{align-items:stretch;}
+    .gv-compose textarea{flex:1;min-height:66px;max-height:170px;resize:vertical;padding:11px 12px;font:inherit;line-height:1.45;}
+    .gv-compose button{align-self:stretch;padding:0 18px;}
+    /* colour swatches in settings */
+    .gvsw{display:flex;flex-wrap:wrap;gap:9px;margin-top:2px;}
+    .gvsw .sw{display:flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--line);border-radius:10px;background:#0e151d;color:var(--ink);font-size:12px;cursor:pointer;}
+    .gvsw .sw .dotc{width:13px;height:13px;border-radius:50%;border:1px solid rgba(255,255,255,.25);}
+    .gvsw .sw.on{border-color:var(--peacock);box-shadow:0 0 0 1px var(--peacock) inset;}
+    /* structured meal prep */
+    .gvmeal{background:#10171f;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
+    .gvmeal-day{font-weight:800;color:var(--peacock);font-size:12px;letter-spacing:1.4px;margin-bottom:6px;text-transform:uppercase;}
+    .gvmeal label{display:block;font-size:11px;color:var(--mut);margin:8px 0 3px;}
+    .gvmeal input{width:100%;padding:9px 11px;font-size:13px;}
+    /* today's AI plan */
+    #gidPlan{margin-bottom:14px;}
+    .gidplan-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--peacock);font-weight:800;margin-bottom:10px;}
+    .gidplan-refresh{background:#0e151d !important;border:1px solid var(--line) !important;color:var(--mut) !important;border-radius:8px !important;padding:4px 9px !important;font-size:13px;cursor:pointer;}
+    .gidplan-item{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);}
+    .gidplan-item:last-child{border-bottom:none;}
+    .gidplan-txt{flex:1;font-size:14px;line-height:1.4;}
+    .gidplan-item.done .gidplan-txt{opacity:.5;text-decoration:line-through;}
+    .gidplan-item.skip .gidplan-txt{opacity:.4;}
+    .gidplan-btns{display:flex;gap:6px;flex:none;}
+    .gidplan-btns button{background:#0e151d !important;border:1px solid var(--line) !important;color:var(--mut) !important;border-radius:8px !important;padding:6px 10px !important;font-size:12px;font-weight:700;cursor:pointer;}
+    .gidplan-btns button.on{background:var(--peacock) !important;border-color:var(--peacock) !important;color:#06121b !important;}
+    .gidplan-loading{color:var(--mut);font-size:13px;padding:6px 0;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -142,11 +169,18 @@
       if (window.__gidFilterHook) return true;
       var orig = window.isTrainingSession;
       window.isTrainingSession = function (e) {
+        var p = getPrefs();
         var nm = ((e && e.summary) || '').toLowerCase();
-        var hide = getPrefs().hide || [];
+        var hide = p.hide || [];
         for (var i = 0; i < hide.length; i++) {
           var k = (hide[i] || '').trim().toLowerCase();
           if (k && nm.indexOf(k) > -1) return false;
+        }
+        // colour ownership: if "my colours" chosen, only those calendar colours count as mine
+        var show = p.showColors || [];
+        if (show.length) {
+          var c = (e && e.colorId != null) ? String(e.colorId) : '';
+          if (show.indexOf(c) === -1) return false;
         }
         return orig(e);
       };
@@ -233,6 +267,16 @@
             buildTabs();
             showView('today');
             mountCoach();
+            // today's AI plan at the top of the Today view
+            var todayView = document.getElementById('gv-today');
+            if (todayView && !document.getElementById('gidPlan')) {
+              var pc = document.createElement('div'); pc.className = 'card'; pc.id = 'gidPlan';
+              todayView.insertBefore(pc, todayView.firstChild);
+              gidEnsurePlan(false);
+            }
+            // structured meal prep (override the app's single-line renderer)
+            window.renderMeals = gidRenderMeals;
+            gidRenderMeals();
           }
         }
       }
@@ -270,6 +314,10 @@
           '<div style="margin-top:10px"><button class="gvbtn" id="gvHideSave">Save</button></div>' +
           '<div class="hint">Comma-separated words. Any session whose name contains one is hidden. Leave blank to show everything.</div>' +
         '</div>' +
+        '<div class="row"><label>Show only my calendar colours</label>' +
+          '<div class="gvsw" id="gvColors"></div>' +
+          '<div class="hint">Tap the colours you use for <b>your</b> sessions. Then only those count as yours — the fix for a shared calendar where a partner\'s runs are named the same but a different colour. Leave all off to show every colour.</div>' +
+        '</div>' +
         '<div class="row"><label>Connections</label><div id="gvConns" class="hint">…</div></div>' +
       '</div>';
     document.body.appendChild(sheet);
@@ -287,9 +335,37 @@
         .catch(function () { b.textContent = 'Use this calendar'; });
     });
   }
+  // Google Calendar colours (id → label, hex). '' = the calendar's default colour.
+  var GCOLORS = [
+    ['', 'Default', '#7c8aa0'], ['7', 'Peacock', '#039be5'], ['9', 'Blueberry', '#3f51b5'],
+    ['3', 'Grape', '#8e24aa'], ['1', 'Lavender', '#7986cb'], ['2', 'Sage', '#33b679'],
+    ['10', 'Basil', '#0b8043'], ['5', 'Banana', '#f6bf26'], ['6', 'Tangerine', '#f4511e'],
+    ['4', 'Flamingo', '#e67c73'], ['11', 'Tomato', '#d50000'], ['8', 'Graphite', '#616161']
+  ];
+  function renderColorSwatches() {
+    var box = document.getElementById('gvColors'); if (!box) return;
+    var sel = getPrefs().showColors || [];
+    box.innerHTML = GCOLORS.map(function (c) {
+      var on = sel.indexOf(c[0]) > -1 ? ' on' : '';
+      return '<button class="sw' + on + '" data-c="' + c[0] + '"><span class="dotc" style="background:' + c[2] + '"></span>' + c[1] + '</button>';
+    }).join('');
+    box.querySelectorAll('.sw').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var c = b.getAttribute('data-c');
+        var p = getPrefs(); var s = p.showColors || [];
+        var i = s.indexOf(c);
+        if (i > -1) s.splice(i, 1); else s.push(c);
+        p.showColors = s; setPrefs(p);
+        b.classList.toggle('on');
+        window.__gidRerender && window.__gidRerender();
+      });
+    });
+  }
+
   function openSheet() {
     var s = document.getElementById('gvSheet'); if (!s) return;
     document.getElementById('gvHide').value = (getPrefs().hide || []).join(', ');
+    renderColorSwatches();
     // connections
     fetch('/api/me', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (m) {
       document.getElementById('gvConns').innerHTML =
@@ -319,7 +395,7 @@
       '<div class="card">' +
         '<div class="gv-intro" id="gvIntro">Tell your coach your goals, constraints or what you want changed — it reads your live cockpit data and tailors advice to you. e.g. “I can only train 4 days a week” or “focus me on the 70.3”.</div>' +
         '<div class="gv-chat" id="gvChat"></div>' +
-        '<div class="gv-compose"><input id="gvInput" placeholder="Message your coach…" autocomplete="off"><button id="gvSend">Send</button></div>' +
+        '<div class="gv-compose"><textarea id="gvInput" rows="3" placeholder="Message your coach…  (Enter to send, Shift+Enter for a new line)"></textarea><button id="gvSend">Send</button></div>' +
       '</div>';
     return w;
   }
@@ -366,7 +442,102 @@
         .finally(function () { send.disabled = false; input.focus(); });
     }
     send.addEventListener('click', go);
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } });
+  }
+
+  function esc(s) { return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ---- structured meal prep: Breakfast / Lunch / Dinner on their own lines ---- */
+  function gidRenderMeals() {
+    try {
+      var box = document.getElementById('meals'); if (!box) return;
+      var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      var m = {}; try { m = JSON.parse(localStorage.getItem('gideon_meals') || '{}'); } catch (e) {}
+      function parse(s) {
+        s = s || ''; var o = { b: '', l: '', d: '' };
+        var mb = s.match(/B\s*[:\-]\s*([^/|\n]*)/i), ml = s.match(/L\s*[:\-]\s*([^/|\n]*)/i), md = s.match(/D\s*[:\-]\s*([^/|\n]*)/i);
+        if (mb) o.b = mb[1].trim(); if (ml) o.l = ml[1].trim(); if (md) o.d = md[1].trim();
+        if (!mb && !ml && !md && s.trim()) o.b = s.trim();
+        return o;
+      }
+      box.innerHTML = DAYS.map(function (d) {
+        var p = parse(m[d]);
+        return '<div class="gvmeal" data-day="' + d + '"><div class="gvmeal-day">' + d + '</div>'
+          + '<label>🌅 Breakfast</label><input class="gvm-b" value="' + esc(p.b) + '">'
+          + '<label>☀️ Lunch</label><input class="gvm-l" value="' + esc(p.l) + '">'
+          + '<label>🌙 Dinner</label><input class="gvm-d" value="' + esc(p.d) + '"></div>';
+      }).join('');
+      box.querySelectorAll('.gvmeal').forEach(function (card) {
+        card.querySelectorAll('input').forEach(function (inp) {
+          inp.addEventListener('input', function () {
+            var day = card.getAttribute('data-day');
+            var b = card.querySelector('.gvm-b').value, l = card.querySelector('.gvm-l').value, dd = card.querySelector('.gvm-d').value;
+            var mm = {}; try { mm = JSON.parse(localStorage.getItem('gideon_meals') || '{}'); } catch (e) {}
+            mm[day] = 'B: ' + b + ' / L: ' + l + ' / D: ' + dd;
+            try { localStorage.setItem('gideon_meals', JSON.stringify(mm)); } catch (e) {}
+          });
+        });
+      });
+    } catch (e) {}
+  }
+
+  /* ---- today's AI-tailored plan; refreshes for the new day (~3am rollover) ---- */
+  function gidDayKey() { var d = new Date(Date.now() - 3 * 3600 * 1000); return d.toISOString().slice(0, 10); }
+  function gidPlanContext() {
+    function grab(sel, n) { return Array.prototype.slice.call(document.querySelectorAll(sel)).map(function (e) { return (e.textContent || '').trim().replace(/\s+/g, ' '); }).slice(0, n); }
+    var g = grab('.gauge .big', 3), caps = grab('.gauge .cap', 3);
+    return {
+      fitness_fatigue_form: g.map(function (v, i) { return (caps[i] || '') + ': ' + v; }),
+      recent_7d: grab('#weekStats .sname, #weekStats .sval', 8),
+      weekday: new Date().toLocaleDateString('en-GB', { weekday: 'long' }),
+      hide_keywords: getPrefs().hide || []
+    };
+  }
+  function gidRenderPlan(plan) {
+    var el = document.getElementById('gidPlan'); if (!el) return;
+    var stt = plan.status || {};
+    el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan · AI-tailored</span><button class="gidplan-refresh" id="gidPlanRefresh" title="Regenerate">↻</button></div>'
+      + plan.sessions.map(function (s, i) {
+        var dn = stt[i] === 'done', sk = stt[i] === 'skip';
+        return '<div class="gidplan-item' + (dn ? ' done' : '') + (sk ? ' skip' : '') + '"><div class="gidplan-txt">' + esc(s) + '</div>'
+          + '<div class="gidplan-btns"><button data-i="' + i + '" data-a="done" class="' + (dn ? 'on' : '') + '">✓</button>'
+          + '<button data-i="' + i + '" data-a="skip" class="' + (sk ? 'on' : '') + '">⤫</button></div></div>';
+      }).join('');
+    var rb = el.querySelector('#gidPlanRefresh'); if (rb) rb.addEventListener('click', function () { gidEnsurePlan(true); });
+    el.querySelectorAll('.gidplan-btns button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = b.getAttribute('data-i'), a = b.getAttribute('data-a');
+        var p; try { p = JSON.parse(localStorage.getItem('gid_plan')); } catch (e) { return; }
+        if (!p) return; p.status = p.status || {};
+        p.status[i] = (p.status[i] === a) ? null : a;
+        try { localStorage.setItem('gid_plan', JSON.stringify(p)); } catch (e) {}
+        gidRenderPlan(p);
+      });
+    });
+  }
+  function gidEnsurePlan(force) {
+    var el = document.getElementById('gidPlan'); if (!el) return;
+    var key = gidDayKey(), plan = null;
+    try { plan = JSON.parse(localStorage.getItem('gid_plan') || 'null'); } catch (e) {}
+    if (!force && plan && plan.date === key && plan.sessions && plan.sessions.length) { gidRenderPlan(plan); return; }
+    el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan · AI-tailored</span></div><div class="gidplan-loading"><span class="gv-dots"><span></span><span></span><span></span></span> building today\'s session…</div>';
+    var prompt = "Create today's training plan for " + new Date().toLocaleDateString('en-GB', { weekday: 'long' }) +
+      ". Using the athlete's fatigue and recent load below, prescribe 1-2 sessions — or an easy/rest day if fatigue is high (negative form/TSB). " +
+      "Output ONLY the session lines, each on its own line starting with '- ', format '- Sport Duration — focus' (e.g. '- Bike 60min — easy Z2 aerobic'). No preamble, no other text.";
+    fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: gidPlanContext(), history: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var lines = (d.reply || '').split('\n').map(function (s) { return s.replace(/^[\s\-•*\d.]+/, '').trim(); }).filter(function (s) { return s.length > 3 && !/^(here|today|your|based|okay|sure)/i.test(s); });
+        if (!lines.length) { var t = (d.reply || 'Easy day — keep it aerobic.').trim(); lines = [t.slice(0, 160)]; }
+        lines = lines.slice(0, 3);
+        var np = { date: key, sessions: lines, status: (plan && plan.date === key ? plan.status : {}) || {} };
+        try { localStorage.setItem('gid_plan', JSON.stringify(np)); } catch (e) {}
+        gidRenderPlan(np);
+      })
+      .catch(function () {
+        el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan</span><button class="gidplan-refresh" id="gidPlanRefresh">↻</button></div><div class="gidplan-loading">Could not build a plan — tap ↻ to retry.</div>';
+        var rb2 = document.getElementById('gidPlanRefresh'); if (rb2) rb2.addEventListener('click', function () { gidEnsurePlan(true); });
+      });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
