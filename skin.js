@@ -106,6 +106,22 @@
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
 
+  /* make /app/ installable as a PWA — the base page is missing these tags */
+  [
+    ['link', { rel: 'manifest', href: '/manifest.webmanifest' }],
+    ['link', { rel: 'apple-touch-icon', href: '/icon-192.png' }],
+    ['meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }],
+    ['meta', { name: 'mobile-web-app-capable', content: 'yes' }],
+    ['meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }],
+    ['meta', { name: 'apple-mobile-web-app-title', content: 'Cockpit' }]
+  ].forEach(function (d) {
+    var key = d[1].rel ? '[rel="' + d[1].rel + '"]' : '[name="' + d[1].name + '"]';
+    if (document.head.querySelector(d[0] + key)) return;
+    var el = document.createElement(d[0]);
+    for (var k in d[1]) el.setAttribute(k, d[1][k]);
+    document.head.appendChild(el);
+  });
+
   /* ---------------- 2. Chart.js dark defaults ---------------- */
   function tuneCharts() {
     if (window.Chart && Chart.defaults) {
@@ -163,7 +179,16 @@
       var b = document.getElementById('gvtab-' + k); if (b) b.classList.toggle('on', k === v);
     });
     window.scrollTo({ top: 0 });
-    try { window.dispatchEvent(new Event('resize')); } catch (e) {}   // let charts re-fit when their view shows
+    // Charts created while their view was hidden render at zero size — resize + redraw them now.
+    try {
+      var view = document.getElementById('gv-' + v);
+      if (view && window.Chart && Chart.getChart) {
+        view.querySelectorAll('canvas').forEach(function (cv) {
+          var ch = Chart.getChart(cv);
+          if (ch) { try { ch.resize(); ch.update('none'); } catch (e) {} }
+        });
+      }
+    } catch (e) {}
   }
 
   function build() {
