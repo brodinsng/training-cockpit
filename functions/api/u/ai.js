@@ -27,7 +27,14 @@ export async function onRequestPost({ request, env }) {
     }
     messages.push({ role: 'user', content: message });
 
-    const out = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages, max_tokens: 512 });
+    // Try current models in order; fall through if one is deprecated/unavailable.
+    var MODELS = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast', '@cf/meta/llama-3.2-3b-instruct'];
+    var out = null, lastErr = null;
+    for (var mi = 0; mi < MODELS.length; mi++) {
+      try { out = await env.AI.run(MODELS[mi], { messages, max_tokens: 512 }); if (out) break; }
+      catch (err) { lastErr = err; }
+    }
+    if (!out) throw (lastErr || new Error('no model available'));
     const reply = (out && (out.response || out.result || (typeof out === 'string' ? out : ''))) || "I couldn't generate a reply just now — try again.";
     return new Response(JSON.stringify({ reply }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   } catch (e) {
