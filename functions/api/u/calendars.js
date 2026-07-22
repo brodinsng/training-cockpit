@@ -1,6 +1,4 @@
-// GET /api/u/events  → the logged-in user's chosen calendar for the next 21 days.
-// Per-user: reads the calendar id from the `cal_id` cookie (set via /api/u/setcal),
-// falling back to the user's own 'primary' calendar. Authenticated with their g_rt cookie.
+// GET /api/u/calendars  → the logged-in user's calendar list (for the calendar picker).
 function getCookie(req, name) {
   const c = req.headers.get('Cookie') || '';
   const m = c.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -14,13 +12,11 @@ export async function onRequestGet({ request, env }) {
     const tr = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
     const td = await tr.json();
     if (!td.access_token) throw new Error('google token');
-    const now = new Date(); const end = new Date(now.getTime() + 21 * 864e5);
-    const cal = encodeURIComponent(getCookie(request, 'cal_id') || 'primary');
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${cal}/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=250`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${td.access_token}` } });
+    const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&minAccessRole=reader', { headers: { Authorization: `Bearer ${td.access_token}` } });
     if (!res.ok) return new Response(JSON.stringify({ error: 'google', status: res.status }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     const raw = await res.json();
-    const events = (raw.items || []).map((e) => ({ id: e.id, summary: e.summary || '', description: e.description || '', start: e.start, end: e.end, colorId: e.colorId || '' }));
-    return new Response(JSON.stringify({ events }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    const current = getCookie(request, 'cal_id') || 'primary';
+    const calendars = (raw.items || []).map((c) => ({ id: c.id, summary: c.summary || c.id, primary: !!c.primary }));
+    return new Response(JSON.stringify({ calendars, current }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   } catch (e) { return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } }); }
 }
