@@ -18,6 +18,9 @@
     catch (e) { return { hide: [] }; }
   }
   function setPrefs(p) { try { localStorage.setItem('gid_prefs', JSON.stringify(p)); } catch (e) {} }
+  function getProfile() { try { return Object.assign({ sports: [], done: false }, JSON.parse(localStorage.getItem('gid_profile') || '{}')); } catch (e) { return { sports: [], done: false }; } }
+  function setProfile(p) { try { localStorage.setItem('gid_profile', JSON.stringify(p)); } catch (e) {} }
+  function isCyclist() { var s = getProfile().sports || []; return s.indexOf('Cycling') > -1 || s.indexOf('Triathlon') > -1; }
 
   /* ---------------- 1. dark theme + layout ---------------- */
   var css = `
@@ -129,6 +132,22 @@
     .gidplan-btns button{background:#0e151d !important;border:1px solid var(--line) !important;color:var(--mut) !important;border-radius:8px !important;padding:6px 10px !important;font-size:12px;font-weight:700;cursor:pointer;}
     .gidplan-btns button.on{background:var(--peacock) !important;border-color:var(--peacock) !important;color:#06121b !important;}
     .gidplan-loading{color:var(--mut);font-size:13px;padding:6px 0;}
+    /* onboarding / profile */
+    #gvOnboard{position:fixed;inset:0;z-index:70;background:var(--bg);display:none;overflow:auto;}
+    #gvOnboard.on{display:block;}
+    #gvOnboard .ob{max-width:520px;margin:0 auto;padding:46px 20px 44px;}
+    #gvOnboard .obh{color:var(--ink);font-size:23px;font-weight:800;letter-spacing:-.4px;margin:0 0 6px;}
+    #gvOnboard .obsub{color:var(--mut);font-size:14px;margin-bottom:20px;line-height:1.5;}
+    #gvOnboard label{display:block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin:20px 0 8px;}
+    #gvOnboard input,#gvOnboard select,#gvOnboard textarea{width:100%;padding:12px;font-size:15px;}
+    #gvOnboard .chips{display:flex;flex-wrap:wrap;gap:8px;}
+    #gvOnboard .chip{padding:9px 14px;border:1px solid var(--line);border-radius:11px;background:#0e151d;color:var(--ink);font-size:13px;cursor:pointer;user-select:none;}
+    #gvOnboard .chip.on{background:var(--peacock);color:#06121b;border-color:var(--peacock);font-weight:800;}
+    #gvOnboard .two{display:flex;gap:10px;}
+    #gvOnboard .two>div{flex:1;}
+    #gvOnboard .obgo{margin-top:28px;width:100%;background:var(--peacock);color:#06121b;border:none;border-radius:12px;padding:15px;font-weight:800;font-size:15px;cursor:pointer;}
+    #gvOnboard .obskip{display:block;text-align:center;margin-top:14px;color:var(--mut);font-size:13px;cursor:pointer;background:none;border:none;width:100%;}
+    #gvFtp.gvhide{display:none !important;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -274,9 +293,13 @@
               todayView.insertBefore(pc, todayView.firstChild);
               gidEnsurePlan(false);
             }
-            // structured meal prep (override the app's single-line renderer)
+            // structured meal prep + working AI generation
             window.renderMeals = gidRenderMeals;
+            window.generateMeals = gidGenerateMeals;
             gidRenderMeals();
+            // profile: fill metrics, hide FTP for non-cyclists, run onboarding first time
+            applyProfile();
+            if (!getProfile().done) showOnboard();
           }
         }
       }
@@ -318,6 +341,8 @@
           '<div class="gvsw" id="gvColors"></div>' +
           '<div class="hint">Tap the colours you use for <b>your</b> sessions. Then only those count as yours — the fix for a shared calendar where a partner\'s runs are named the same but a different colour. Leave all off to show every colour.</div>' +
         '</div>' +
+        '<div class="row"><label>Your profile</label><button class="gvbtn" id="gvEditProfile">Edit sport, metrics &amp; diet</button>' +
+          '<div class="hint">Your sport, goal, height/weight, FTP and dietary needs — drives your plan and meal tailoring.</div></div>' +
         '<div class="row"><label>Connections</label><div id="gvConns" class="hint">…</div></div>' +
       '</div>';
     document.body.appendChild(sheet);
@@ -328,6 +353,7 @@
       setPrefs(p); window.__gidRerender && window.__gidRerender();
       var b = this; var t = b.textContent; b.textContent = 'Saved ✓'; setTimeout(function () { b.textContent = t; }, 1200);
     });
+    sheet.querySelector('#gvEditProfile').addEventListener('click', function () { closeSheet(); showOnboard(); });
     sheet.querySelector('#gvCalSave').addEventListener('click', function () {
       var id = document.getElementById('gvCalSel').value; if (!id) return;
       var b = this; b.textContent = 'Saving…';
@@ -486,9 +512,14 @@
   function gidPlanContext() {
     function grab(sel, n) { return Array.prototype.slice.call(document.querySelectorAll(sel)).map(function (e) { return (e.textContent || '').trim().replace(/\s+/g, ' '); }).slice(0, n); }
     var g = grab('.gauge .big', 3), caps = grab('.gauge .cap', 3);
+    var done = document.getElementById('todayDone');
+    var readi = document.getElementById('readi');
     return {
       fitness_fatigue_form: g.map(function (v, i) { return (caps[i] || '') + ': ' + v; }),
       recent_7d: grab('#weekStats .sname, #weekStats .sval', 8),
+      completed_today: done ? (done.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 300) : 'nothing logged yet today',
+      daily_checkin: readi ? (readi.textContent || '').trim().slice(0, 160) : '',
+      profile: getProfile(),
       weekday: new Date().toLocaleDateString('en-GB', { weekday: 'long' }),
       hide_keywords: getPrefs().hide || []
     };
@@ -522,8 +553,9 @@
     if (!force && plan && plan.date === key && plan.sessions && plan.sessions.length) { gidRenderPlan(plan); return; }
     el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan · AI-tailored</span></div><div class="gidplan-loading"><span class="gv-dots"><span></span><span></span><span></span></span> building today\'s session…</div>';
     var prompt = "Create today's training plan for " + new Date().toLocaleDateString('en-GB', { weekday: 'long' }) +
-      ". Using the athlete's fatigue and recent load below, prescribe 1-2 sessions — or an easy/rest day if fatigue is high (negative form/TSB). " +
-      "Output ONLY the session lines, each on its own line starting with '- ', format '- Sport Duration — focus' (e.g. '- Bike 60min — easy Z2 aerobic'). No preamble, no other text.";
+      ". CRITICAL RULES: (1) Read 'completed_today' — if the athlete has ALREADY trained today, do NOT prescribe more of what they've done; if they've already done substantial work (e.g. a ride AND a run, or a long/hard session), the answer is REST or gentle recovery only — never add more load on top of an overloaded day. " +
+      "(2) Respect 'daily_checkin' — amber/red readiness or poor sleep/soreness means easier or rest. (3) Tailor to the sports in 'profile' — never prescribe a sport they don't do. " +
+      "Output ONLY session lines, each on its own line starting with '- ', format '- Sport Duration — focus'. If the right call is rest, output the single line '- Rest — you've trained enough today, recover.' No preamble, no other text.";
     fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: gidPlanContext(), history: [] }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -538,6 +570,105 @@
         el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan</span><button class="gidplan-refresh" id="gidPlanRefresh">↻</button></div><div class="gidplan-loading">Could not build a plan — tap ↻ to retry.</div>';
         var rb2 = document.getElementById('gidPlanRefresh'); if (rb2) rb2.addEventListener('click', function () { gidEnsurePlan(true); });
       });
+  }
+
+  /* ---- profile: apply to metrics (fill + hide FTP for non-cyclists) ---- */
+  function fire(el) { try { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+  function applyProfile() {
+    try {
+      var p = getProfile();
+      var h = document.getElementById('pf_h'), w = document.getElementById('pf_w'), f = document.getElementById('pf_ftp');
+      if (h && p.heightCm) { h.value = p.heightCm; fire(h); }
+      if (w && p.weightKg) { w.value = p.weightKg; fire(w); }
+      if (f && p.ftp) { f.value = p.ftp; fire(f); }
+      if (f) { var box = f.closest('.metric'); if (box) { var hideFtp = p.done && (p.sports || []).length > 0 && !isCyclist(); box.style.display = hideFtp ? 'none' : ''; } }
+    } catch (e) {}
+  }
+
+  /* ---- onboarding questionnaire ---- */
+  var SPORTS = ['Running', 'Cycling', 'Swimming', 'Triathlon', 'Gym / Strength', 'Other'];
+  var GOALS = ['General fitness', 'Endurance race', 'Weight loss', 'Build muscle', 'Stay maintained'];
+  function buildOnboard() {
+    if (document.getElementById('gvOnboard')) return;
+    var p = getProfile();
+    var d = document.createElement('div'); d.id = 'gvOnboard';
+    d.innerHTML = '<div class="ob">'
+      + '<div class="obh">Let\'s tailor this to you</div>'
+      + '<div class="obsub">A few quick questions so your plan, metrics and nutrition fit <i>you</i> — not a generic template. About 20 seconds.</div>'
+      + '<label>What do you train?</label><div class="chips" id="obSports">' + SPORTS.map(function (s) { return '<button class="chip' + ((p.sports || []).indexOf(s) > -1 ? ' on' : '') + '" data-v="' + s + '">' + s + '</button>'; }).join('') + '</div>'
+      + '<label>Main goal</label><select id="obGoal">' + GOALS.map(function (g) { return '<option' + (p.goal === g ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select>'
+      + '<div class="two"><div><label>Sex</label><div class="chips" id="obSex">' + ['M', 'F', '—'].map(function (s) { return '<button class="chip' + (p.sex === s ? ' on' : '') + '" data-v="' + s + '">' + s + '</button>'; }).join('') + '</div></div>'
+      + '<div><label>Age</label><input id="obAge" type="number" inputmode="numeric" placeholder="30" value="' + (p.age || '') + '"></div></div>'
+      + '<div class="two"><div><label>Height (cm)</label><input id="obH" type="number" inputmode="numeric" placeholder="170" value="' + (p.heightCm || '') + '"></div>'
+      + '<div><label>Weight (kg)</label><input id="obW" type="number" inputmode="numeric" placeholder="68" value="' + (p.weightKg || '') + '"></div></div>'
+      + '<div id="obFtpRow" style="display:none"><label>FTP (watts) — cyclists only</label><input id="obFtp" type="number" inputmode="numeric" placeholder="200" value="' + (p.ftp || '') + '"></div>'
+      + '<label>Dietary needs or foods to avoid</label><textarea id="obDiet" rows="2" placeholder="e.g. halal, no pork, vegetarian, nut allergy — or leave blank">' + esc(p.diet || '') + '</textarea>'
+      + '<label>Training days per week</label><input id="obDays" type="number" inputmode="numeric" placeholder="4" value="' + (p.daysPerWeek || '') + '">'
+      + '<button class="obgo" id="obGo">Build my cockpit</button>'
+      + '<button class="obskip" id="obSkip">Skip for now</button>'
+      + '</div>';
+    document.body.appendChild(d);
+    function bindChips(box, multi) {
+      box.querySelectorAll('.chip').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (multi) b.classList.toggle('on');
+          else { box.querySelectorAll('.chip').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); }
+          updFtp();
+        });
+      });
+    }
+    function updFtp() {
+      var sel = Array.prototype.slice.call(d.querySelectorAll('#obSports .chip.on')).map(function (b) { return b.getAttribute('data-v'); });
+      d.querySelector('#obFtpRow').style.display = (sel.indexOf('Cycling') > -1 || sel.indexOf('Triathlon') > -1) ? '' : 'none';
+    }
+    bindChips(d.querySelector('#obSports'), true);
+    bindChips(d.querySelector('#obSex'), false);
+    updFtp();
+    d.querySelector('#obGo').addEventListener('click', saveOnboard);
+    d.querySelector('#obSkip').addEventListener('click', function () { var pp = getProfile(); pp.done = true; setProfile(pp); hideOnboard(); });
+  }
+  function saveOnboard() {
+    var d = document.getElementById('gvOnboard'); if (!d) return;
+    var sports = Array.prototype.slice.call(d.querySelectorAll('#obSports .chip.on')).map(function (b) { return b.getAttribute('data-v'); });
+    var sexBtn = d.querySelector('#obSex .chip.on');
+    var num = function (id) { var v = parseFloat((d.querySelector(id) || {}).value); return isFinite(v) ? v : null; };
+    var p = getProfile();
+    p.sports = sports; p.goal = d.querySelector('#obGoal').value; p.sex = sexBtn ? sexBtn.getAttribute('data-v') : '';
+    p.age = num('#obAge'); p.heightCm = num('#obH'); p.weightKg = num('#obW'); p.ftp = num('#obFtp');
+    p.diet = (d.querySelector('#obDiet').value || '').trim(); p.daysPerWeek = num('#obDays');
+    p.done = true; setProfile(p);
+    hideOnboard(); applyProfile();
+    try { localStorage.removeItem('gid_plan'); } catch (e) {}   // regenerate plan for the new profile
+    var pel = document.getElementById('gidPlan'); if (pel) gidEnsurePlan(true);
+  }
+  function showOnboard() { buildOnboard(); var d = document.getElementById('gvOnboard'); if (d) d.classList.add('on'); }
+  function hideOnboard() { var d = document.getElementById('gvOnboard'); if (d) d.classList.remove('on'); }
+
+  /* ---- tailored meal generation via Workers AI (replaces the app's stub) ---- */
+  function gidGenerateMeals() {
+    var btn = document.getElementById('mealgen'); var old = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = 'Thinking…'; btn.disabled = true; }
+    var p = getProfile();
+    var bmi = (p.heightCm && p.weightKg) ? (p.weightKg / Math.pow(p.heightCm / 100, 2)).toFixed(1) : '?';
+    var prompt = "Design a 7-day meal plan (Mon to Sun) optimised for this athlete's nutrition. "
+      + "Sports: " + ((p.sports || []).join(', ') || 'general fitness') + ". Goal: " + (p.goal || 'general fitness') + ". "
+      + "Sex " + (p.sex || '?') + ", age " + (p.age || '?') + ", height " + (p.heightCm || '?') + "cm, weight " + (p.weightKg || '?') + "kg, BMI " + bmi + ". "
+      + "Dietary needs / foods to avoid: " + (p.diet || 'none') + ". "
+      + "Rules: aim ~1.8-2g protein per kg bodyweight daily; more carbs on training days; realistic quick weeknight meals; respect the dietary needs strictly. "
+      + "Output EXACTLY 7 lines, one per day, format 'Mon: B: <breakfast> / L: <lunch> / D: <dinner>'. No preamble, no other text.";
+    fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: { profile: p }, history: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (dd) {
+        var m = {}; try { m = JSON.parse(localStorage.getItem('gideon_meals') || '{}'); } catch (e) {}
+        (dd.reply || '').split('\n').forEach(function (line) {
+          var dm = line.replace(/^[-•*\s]+/, '').match(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s*[:\-]\s*(.+)$/i);
+          if (dm) m[dm[1].slice(0, 3).replace(/^\w/, function (c) { return c.toUpperCase(); })] = dm[2].trim();
+        });
+        try { localStorage.setItem('gideon_meals', JSON.stringify(m)); } catch (e) {}
+        gidRenderMeals();
+      })
+      .catch(function () { alert('Could not generate meals — try again in a moment.'); })
+      .finally(function () { if (btn) { btn.textContent = old || '✨ Suggest a week'; btn.disabled = false; } });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
