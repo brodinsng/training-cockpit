@@ -1,5 +1,8 @@
 // GET /api/auth/google  → kicks off Google OAuth (offline, forced consent so we get a refresh token).
-// Scope calendar.readonly lets us both LIST the user's calendars (for the picker) and READ events.
+// Scopes:
+//   calendar.readonly → LIST the user's calendars (picker) + READ their events.
+//   calendar.events   → WRITE the AI training plan onto their calendar (and remove app-created events).
+// The app only ever creates/removes events it tagged itself (extendedProperties.private.cyprusPlan=1).
 export function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const redirect = `${url.origin}/api/auth/google/callback`;
@@ -9,7 +12,8 @@ export function onRequestGet({ request, env }) {
     response_type: 'code',
     access_type: 'offline',
     prompt: 'consent',
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    include_granted_scopes: 'true',
+    scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
   });
   return Response.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString(), 302);
 }
