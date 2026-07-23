@@ -190,6 +190,22 @@
     /* connect-strava nudge */
     .gv-nudge{margin:0 0 6px;padding:12px 14px;border-radius:12px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--strava) !important;color:var(--ink);font-size:13px;line-height:1.5;}
     .gv-nudge a{color:var(--strava);font-weight:800;text-decoration:none;}
+    /* header refresh button */
+    #gvRefresh{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:#0e151d;color:var(--ink);font-size:17px;cursor:pointer;margin-right:8px;}
+    #gvRefresh:active{transform:rotate(180deg);transition:transform .3s;}
+    /* pull-to-refresh indicator */
+    #gidPTR{position:fixed;top:10px;left:50%;transform:translateX(-50%) translateY(-46px);z-index:80;width:38px;height:38px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--peacock);display:flex;align-items:center;justify-content:center;font-size:19px;opacity:0;box-shadow:0 6px 18px rgba(0,0,0,.5);pointer-events:none;}
+    #gidPTR.ready{color:var(--good);border-color:var(--good);}
+    #gidPTR.spin .gidptr-i{animation:gidspin .7s linear infinite;}
+    .gidptr-i{display:inline-block;}
+    @keyframes gidspin{to{transform:rotate(360deg);}}
+    /* install banner */
+    #gidInstall{position:fixed;left:12px;right:12px;bottom:calc(102px + env(safe-area-inset-bottom));z-index:75;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;box-shadow:0 10px 28px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:10px;animation:gvIn .2s ease;}
+    #gidInstall .gi-txt{font-size:13px;line-height:1.55;color:var(--ink);}
+    #gidInstall .gi-txt b{color:var(--peacock);}
+    #gidInstall .gi-btns{display:flex;gap:8px;justify-content:flex-end;align-items:center;}
+    #gidInstall .gi-go{background:var(--peacock);color:#06121b;border:none;border-radius:9px;padding:9px 16px;font-weight:800;font-size:13px;cursor:pointer;}
+    #gidInstall .gi-x{background:#0e151d;color:var(--mut);border:1px solid var(--line);border-radius:9px;padding:9px 14px;font-size:13px;cursor:pointer;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -301,6 +317,9 @@
         var sub = document.getElementById('sub');
         if (sub) { sub.classList.add('s'); tw.appendChild(sub); sub.style.display = ''; }
         header.appendChild(tw);
+        var refresh = document.createElement('button'); refresh.id = 'gvRefresh'; refresh.innerHTML = '↻'; refresh.title = 'Refresh';
+        refresh.addEventListener('click', function () { gidRefreshApp(); });
+        header.appendChild(refresh);
         var gear = document.createElement('button'); gear.id = 'gvGear'; gear.innerHTML = '⚙'; gear.title = 'Settings';
         gear.addEventListener('click', openSheet);
         header.appendChild(gear);
@@ -896,6 +915,7 @@
     var cur = w.current, hs = w.hourly || {};
     var cc = wxCode(cur.weather_code);
     var t = Math.round(cur.temperature_2m), feels = Math.round(cur.apparent_temperature), wind = Math.round(cur.wind_speed_10m);
+    var gust = (cur.wind_gusts_10m != null) ? Math.round(cur.wind_gusts_10m) : null;
     var times = hs.time || [], temps = hs.temperature_2m || [], codes = hs.weather_code || [], pp = hs.precipitation_probability || [];
     var now = Date.now(), start = 0;
     for (var i = 0; i < times.length; i++) { if (new Date(times[i]).getTime() >= now) { start = i; break; } }
@@ -906,7 +926,7 @@
     }
     el.innerHTML = '<div class="wx-h"><span>Weather</span><button class="wx-refresh" id="gidWxR" title="Refresh">↻</button></div>'
       + '<div class="wx-now"><div class="wx-ico">' + cc[0] + '</div><div><div class="wx-temp">' + t + '°</div></div>'
-      + '<div class="wx-meta"><div class="wx-cond">' + cc[1] + '</div>Feels ' + feels + '° · Wind ' + wind + ' km/h' + (cur.relative_humidity_2m != null ? ' · Humidity ' + cur.relative_humidity_2m + '%' : '') + '</div></div>'
+      + '<div class="wx-meta"><div class="wx-cond">' + cc[1] + '</div>Feels ' + feels + '° · Wind ' + wind + (gust != null && gust > wind ? '–' + gust : '') + ' km/h' + (cur.relative_humidity_2m != null ? ' · Humidity ' + cur.relative_humidity_2m + '%' : '') + '</div></div>'
       + (hoursHtml ? '<div class="wx-hours">' + hoursHtml + '</div>' : '');
     wxRefreshBtn(el);
   }
@@ -920,9 +940,11 @@
         el.innerHTML = '<div class="wx-h"><span>Weather</span><button class="wx-refresh" id="gidWxR">↻</button></div><div class="wx-err">Allow location to see your forecast, then tap ↻.</div>';
         wxRefreshBtn(el); return;
       }
+      // models=best_match → Open-Meteo auto-selects the most accurate model per location
+      // (ECMWF where it wins, high-res local models like ICON/AROME where those beat it).
       var u = 'https://api.open-meteo.com/v1/forecast?latitude=' + g.lat + '&longitude=' + g.lon +
-        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m' +
-        '&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=2&timezone=auto';
+        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m' +
+        '&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=2&timezone=auto&models=best_match';
       fetch(u).then(function (r) { return r.json(); }).then(function (dw) {
         if (!dw || !dw.current) throw new Error('bad');
         try { localStorage.setItem('gid_weather', JSON.stringify({ ts: Date.now(), data: dw })); } catch (e) {}
@@ -941,6 +963,60 @@
     try { gidEnsureWeather(false); } catch (e) {}
     try { if (document.getElementById('gidPlan')) gidEnsurePlan(false); } catch (e) {}
   });
+
+  /* ---------------- refresh: header button + pull-to-refresh (standalone PWA) ---------------- */
+  function gidRefreshApp() { try { location.reload(); } catch (e) {} }
+  var GID_STANDALONE = (function () { try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; } })();
+  // In a home-screen (standalone) app there is no browser pull-to-refresh — add our own.
+  (function pullToRefresh() {
+    if (!GID_STANDALONE) return;   // in a normal browser the native gesture already works
+    var startY = 0, pulling = false, dist = 0, ind = null, THRESH = 85;
+    function el() { if (ind) return ind; ind = document.createElement('div'); ind.id = 'gidPTR'; ind.innerHTML = '<span class="gidptr-i">↻</span>'; document.body.appendChild(ind); return ind; }
+    function atTop() { return (window.scrollY || document.documentElement.scrollTop || 0) <= 0; }
+    document.addEventListener('touchstart', function (e) { if (!atTop()) { pulling = false; return; } startY = e.touches[0].clientY; pulling = true; dist = 0; }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!pulling) return;
+      dist = e.touches[0].clientY - startY;
+      if (dist > 0 && atTop()) {
+        var i = el(); var d = Math.min(dist * 0.5, 60);
+        i.style.transform = 'translateX(-50%) translateY(' + (d - 6) + 'px)';
+        i.style.opacity = Math.min(dist / THRESH, 1);
+        i.classList.toggle('ready', dist > THRESH);
+        if (dist > 8 && e.cancelable) e.preventDefault();
+      }
+    }, { passive: false });
+    document.addEventListener('touchend', function () {
+      if (!pulling) return; pulling = false;
+      if (ind && dist > THRESH) { ind.classList.add('spin'); setTimeout(gidRefreshApp, 150); }
+      else if (ind) { ind.style.transform = 'translateX(-50%) translateY(-46px)'; ind.style.opacity = '0'; ind.classList.remove('ready'); }
+      dist = 0;
+    }, { passive: true });
+  })();
+
+  /* ---------------- install helper (Android prompt + iOS Add-to-Home-Screen hint) ---------------- */
+  (function installHelper() {
+    if (GID_STANDALONE) return;                                   // already installed
+    try { if (localStorage.getItem('gid_installHint') === 'dismissed') return; } catch (e) {}
+    var ua = navigator.userAgent || '';
+    var isIOS = /iphone|ipad|ipod/i.test(ua) && !window.MSStream;
+    var deferred = null;
+    function dismiss(b) { if (b) b.remove(); try { localStorage.setItem('gid_installHint', 'dismissed'); } catch (e) {} }
+    function banner(kind) {
+      if (document.getElementById('gidInstall')) return;
+      var b = document.createElement('div'); b.id = 'gidInstall';
+      var body = kind === 'ios'
+        ? 'Add <b>Cyprus</b> to your home screen: tap <b>Share</b> ⬆ then <b>“Add to Home Screen.”</b> It then opens like a real app.'
+        : 'Install <b>Cyprus</b> as an app — faster, full-screen, one tap from your home screen.';
+      b.innerHTML = '<div class="gi-txt">' + body + '</div><div class="gi-btns">'
+        + (kind === 'android' ? '<button class="gi-go" id="giGo">Install</button>' : '')
+        + '<button class="gi-x" id="giX">Got it</button></div>';
+      document.body.appendChild(b);
+      var x = document.getElementById('giX'); if (x) x.addEventListener('click', function () { dismiss(b); });
+      var go = document.getElementById('giGo'); if (go) go.addEventListener('click', function () { if (deferred) { deferred.prompt(); deferred = null; } dismiss(b); });
+    }
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferred = e; setTimeout(function () { banner('android'); }, 1500); });
+    if (isIOS) setTimeout(function () { banner('ios'); }, 2800);
+  })();
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
   else build();
