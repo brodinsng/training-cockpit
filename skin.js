@@ -148,6 +148,25 @@
     #gvOnboard .obgo{margin-top:28px;width:100%;background:var(--peacock);color:#06121b;border:none;border-radius:12px;padding:15px;font-weight:800;font-size:15px;cursor:pointer;}
     #gvOnboard .obskip{display:block;text-align:center;margin-top:14px;color:var(--mut);font-size:13px;cursor:pointer;background:none;border:none;width:100%;}
     #gvFtp.gvhide{display:none !important;}
+    /* weather */
+    #gidWx{margin-bottom:14px;}
+    .wx-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--peacock);font-weight:800;margin-bottom:12px;}
+    .wx-now{display:flex;align-items:center;gap:14px;}
+    .wx-ico{font-size:40px;line-height:1;}
+    .wx-temp{font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1;}
+    .wx-meta{flex:1;color:var(--mut);font-size:12px;line-height:1.5;}
+    .wx-cond{color:var(--ink);font-size:14px;font-weight:600;margin-bottom:2px;}
+    .wx-hours{display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:2px;}
+    .wx-hr{flex:none;text-align:center;background:#10171f;border:1px solid var(--line);border-radius:12px;padding:9px 11px;min-width:52px;}
+    .wx-hr .h{font-size:11px;color:var(--mut);}
+    .wx-hr .e{font-size:18px;margin:3px 0;}
+    .wx-hr .t{font-size:13px;font-weight:700;}
+    .wx-hr .p{font-size:10px;color:var(--ride);height:12px;}
+    .wx-loading,.wx-err{color:var(--mut);font-size:13px;padding:4px 0;}
+    .wx-refresh{background:#0e151d !important;border:1px solid var(--line) !important;color:var(--mut) !important;border-radius:8px !important;padding:4px 9px !important;font-size:13px;cursor:pointer;}
+    /* meal restriction banner */
+    .gvmeal-diet{font-size:12px;color:var(--mut);margin-bottom:10px;padding:9px 11px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--good) !important;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .gvmeal-diet b{color:var(--ink);}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -293,6 +312,12 @@
               var pc = document.createElement('div'); pc.className = 'card'; pc.id = 'gidPlan';
               todayView.insertBefore(pc, todayView.firstChild);
               gidEnsurePlan(false);
+            }
+            // weather card ABOVE the plan (very top of Today)
+            if (todayView && !document.getElementById('gidWx')) {
+              var wc = document.createElement('div'); wc.className = 'card'; wc.id = 'gidWx';
+              todayView.insertBefore(wc, todayView.firstChild);
+              gidEnsureWeather(false);
             }
             // structured meal prep + working AI generation
             window.renderMeals = gidRenderMeals;
@@ -487,13 +512,19 @@
         if (!mb && !ml && !md && s.trim()) o.b = s.trim();
         return o;
       }
-      box.innerHTML = DAYS.map(function (d) {
+      var diet = (getProfile().diet || '').trim();
+      var banner = diet
+        ? '<div class="gvmeal-diet"><span>Tailored to: <b>' + esc(diet) + '</b></span><button class="wx-refresh" id="gidMealRebuild" title="Rebuild meals for these restrictions">↻ rebuild</button></div>'
+        : '';
+      box.innerHTML = banner + DAYS.map(function (d) {
         var p = parse(m[d]);
         return '<div class="gvmeal" data-day="' + d + '"><div class="gvmeal-day">' + d + '</div>'
           + '<label>🌅 Breakfast</label><input class="gvm-b" value="' + esc(p.b) + '">'
           + '<label>☀️ Lunch</label><input class="gvm-l" value="' + esc(p.l) + '">'
           + '<label>🌙 Dinner</label><input class="gvm-d" value="' + esc(p.d) + '"></div>';
       }).join('');
+      var mrb = document.getElementById('gidMealRebuild');
+      if (mrb) mrb.addEventListener('click', function () { gidGenerateMeals(); });
       box.querySelectorAll('.gvmeal').forEach(function (card) {
         card.querySelectorAll('input').forEach(function (inp) {
           inp.addEventListener('input', function () {
@@ -634,6 +665,7 @@
     var sexBtn = d.querySelector('#obSex .chip.on');
     var num = function (id) { var v = parseFloat((d.querySelector(id) || {}).value); return isFinite(v) ? v : null; };
     var p = getProfile();
+    var oldDiet = (p.diet || '').trim();
     p.sports = sports; p.goal = d.querySelector('#obGoal').value; p.sex = sexBtn ? sexBtn.getAttribute('data-v') : '';
     p.age = num('#obAge'); p.heightCm = num('#obH'); p.weightKg = num('#obW'); p.ftp = num('#obFtp');
     p.diet = (d.querySelector('#obDiet').value || '').trim(); p.daysPerWeek = num('#obDays');
@@ -641,6 +673,10 @@
     hideOnboard(); applyProfile();
     try { localStorage.removeItem('gid_plan'); } catch (e) {}   // regenerate plan for the new profile
     var pel = document.getElementById('gidPlan'); if (pel) gidEnsurePlan(true);
+    // if restrictions changed (or no meals yet), rebuild meals so they actually respect the diet
+    var haveMeals = false; try { haveMeals = Object.keys(JSON.parse(localStorage.getItem('gideon_meals') || '{}')).length > 0; } catch (e) {}
+    if (oldDiet !== p.diet || !haveMeals) { try { gidGenerateMeals(); } catch (e) {} }
+    else { gidRenderMeals(); }
   }
   function showOnboard() { buildOnboard(); var d = document.getElementById('gvOnboard'); if (d) d.classList.add('on'); }
   function hideOnboard() { var d = document.getElementById('gvOnboard'); if (d) d.classList.remove('on'); }
@@ -654,8 +690,8 @@
     var prompt = "Design a 7-day meal plan (Mon to Sun) optimised for this athlete's nutrition. "
       + "Sports: " + ((p.sports || []).join(', ') || 'general fitness') + ". Goal: " + (p.goal || 'general fitness') + ". "
       + "Sex " + (p.sex || '?') + ", age " + (p.age || '?') + ", height " + (p.heightCm || '?') + "cm, weight " + (p.weightKg || '?') + "kg, BMI " + bmi + ". "
-      + "Dietary needs / foods to avoid: " + (p.diet || 'none') + ". "
-      + "Rules: aim ~1.8-2g protein per kg bodyweight daily; more carbs on training days; realistic quick weeknight meals; respect the dietary needs strictly. "
+      + "HARD RULE — dietary restrictions: '" + (p.diet || 'none') + "'. You MUST NOT include ANY food, ingredient or drink that violates these restrictions anywhere in the 7 days. If a dish would breach them, replace it with a compliant alternative. This is non-negotiable and overrides everything else. "
+      + "Rules: aim ~1.8-2g protein per kg bodyweight daily; more carbs on training days; realistic quick weeknight meals. "
       + "Output EXACTLY 7 lines, one per day, format 'Mon: B: <breakfast> / L: <lunch> / D: <dinner>'. No preamble, no other text.";
     fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: { profile: p }, history: [] }) })
       .then(function (r) { return r.json(); })
@@ -671,6 +707,85 @@
       .catch(function () { alert('Could not generate meals — try again in a moment.'); })
       .finally(function () { if (btn) { btn.textContent = old || '✨ Suggest a week'; btn.disabled = false; } });
   }
+
+  /* ---------------- weather (Open-Meteo, free, no key) — refreshes hourly ---------------- */
+  var WX_TTL = 60 * 60 * 1000; // 1 hour
+  function wxCode(c) {
+    c = +c;
+    if (c === 0) return ['☀️', 'Clear'];
+    if (c === 1) return ['🌤️', 'Mainly clear'];
+    if (c === 2) return ['⛅', 'Partly cloudy'];
+    if (c === 3) return ['☁️', 'Overcast'];
+    if (c === 45 || c === 48) return ['🌫️', 'Fog'];
+    if (c >= 51 && c <= 57) return ['🌦️', 'Drizzle'];
+    if (c >= 61 && c <= 67) return ['🌧️', 'Rain'];
+    if (c >= 71 && c <= 77) return ['🌨️', 'Snow'];
+    if (c >= 80 && c <= 82) return ['🌦️', 'Rain showers'];
+    if (c >= 85 && c <= 86) return ['🌨️', 'Snow showers'];
+    if (c >= 95) return ['⛈️', 'Thunderstorm'];
+    return ['🌡️', 'Weather'];
+  }
+  function wxGetCoords(cb) {
+    var cached = null; try { cached = JSON.parse(localStorage.getItem('gid_geo') || 'null'); } catch (e) {}
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function (pos) { var g = { lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) }; try { localStorage.setItem('gid_geo', JSON.stringify(g)); } catch (e) {} cb(g); },
+        function () { cb(cached); },
+        { timeout: 8000, maximumAge: 30 * 60 * 1000 }
+      );
+    } else cb(cached);
+  }
+  function wxRefreshBtn(el) { var r = el.querySelector('#gidWxR'); if (r) r.addEventListener('click', function () { gidEnsureWeather(true); }); }
+  function gidRenderWeather(w) {
+    var el = document.getElementById('gidWx'); if (!el || !w || !w.current) return;
+    var cur = w.current, hs = w.hourly || {};
+    var cc = wxCode(cur.weather_code);
+    var t = Math.round(cur.temperature_2m), feels = Math.round(cur.apparent_temperature), wind = Math.round(cur.wind_speed_10m);
+    var times = hs.time || [], temps = hs.temperature_2m || [], codes = hs.weather_code || [], pp = hs.precipitation_probability || [];
+    var now = Date.now(), start = 0;
+    for (var i = 0; i < times.length; i++) { if (new Date(times[i]).getTime() >= now) { start = i; break; } }
+    var hoursHtml = '';
+    for (var j = start; j < Math.min(start + 6, times.length); j++) {
+      var hc = wxCode(codes[j]), hr = new Date(times[j]).getHours();
+      hoursHtml += '<div class="wx-hr"><div class="h">' + ((hr % 12) || 12) + (hr < 12 ? 'a' : 'p') + '</div><div class="e">' + hc[0] + '</div><div class="t">' + Math.round(temps[j]) + '°</div><div class="p">' + (pp[j] != null && pp[j] > 0 ? pp[j] + '%' : '') + '</div></div>';
+    }
+    el.innerHTML = '<div class="wx-h"><span>Weather</span><button class="wx-refresh" id="gidWxR" title="Refresh">↻</button></div>'
+      + '<div class="wx-now"><div class="wx-ico">' + cc[0] + '</div><div><div class="wx-temp">' + t + '°</div></div>'
+      + '<div class="wx-meta"><div class="wx-cond">' + cc[1] + '</div>Feels ' + feels + '° · Wind ' + wind + ' km/h' + (cur.relative_humidity_2m != null ? ' · Humidity ' + cur.relative_humidity_2m + '%' : '') + '</div></div>'
+      + (hoursHtml ? '<div class="wx-hours">' + hoursHtml + '</div>' : '');
+    wxRefreshBtn(el);
+  }
+  function gidEnsureWeather(force) {
+    var el = document.getElementById('gidWx'); if (!el) return;
+    var cache = null; try { cache = JSON.parse(localStorage.getItem('gid_weather') || 'null'); } catch (e) {}
+    if (!force && cache && cache.data && (Date.now() - cache.ts < WX_TTL)) { gidRenderWeather(cache.data); return; }
+    if (!el.innerHTML) el.innerHTML = '<div class="wx-h"><span>Weather</span></div><div class="wx-loading"><span class="gv-dots"><span></span><span></span><span></span></span> checking the sky…</div>';
+    wxGetCoords(function (g) {
+      if (!g) {
+        el.innerHTML = '<div class="wx-h"><span>Weather</span><button class="wx-refresh" id="gidWxR">↻</button></div><div class="wx-err">Allow location to see your forecast, then tap ↻.</div>';
+        wxRefreshBtn(el); return;
+      }
+      var u = 'https://api.open-meteo.com/v1/forecast?latitude=' + g.lat + '&longitude=' + g.lon +
+        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m' +
+        '&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=2&timezone=auto';
+      fetch(u).then(function (r) { return r.json(); }).then(function (dw) {
+        if (!dw || !dw.current) throw new Error('bad');
+        try { localStorage.setItem('gid_weather', JSON.stringify({ ts: Date.now(), data: dw })); } catch (e) {}
+        gidRenderWeather(dw);
+      }).catch(function () {
+        if (cache && cache.data) { gidRenderWeather(cache.data); return; }
+        el.innerHTML = '<div class="wx-h"><span>Weather</span><button class="wx-refresh" id="gidWxR">↻</button></div><div class="wx-err">Could not load weather — tap ↻ to retry.</div>';
+        wxRefreshBtn(el);
+      });
+    });
+  }
+  // hourly auto-refresh + refresh when the app is brought back to the foreground
+  setInterval(function () { if (document.getElementById('gidWx')) gidEnsureWeather(true); }, WX_TTL);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    try { gidEnsureWeather(false); } catch (e) {}
+    try { if (document.getElementById('gidPlan')) gidEnsurePlan(false); } catch (e) {}
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
   else build();
