@@ -167,6 +167,29 @@
     /* meal restriction banner */
     .gvmeal-diet{font-size:12px;color:var(--mut);margin-bottom:10px;padding:9px 11px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--good) !important;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
     .gvmeal-diet b{color:var(--ink);}
+    /* weekly plan → calendar */
+    #gidWeek{margin-bottom:14px;}
+    .gw-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--peacock);font-weight:800;margin-bottom:6px;}
+    .gw-sub{color:var(--mut);font-size:12px;line-height:1.5;margin-bottom:12px;}
+    .gw-row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--line);}
+    .gw-row:last-child{border-bottom:none;}
+    .gw-day{flex:none;width:42px;font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.5px;text-transform:uppercase;line-height:1.25;}
+    .gw-dot{flex:none;width:9px;height:9px;border-radius:50%;}
+    .gw-body{flex:1;min-width:0;}
+    .gw-title{font-size:14px;font-weight:600;color:var(--ink);}
+    .gw-meta{font-size:12px;color:var(--mut);margin-top:1px;}
+    .gw-rest .gw-title{color:var(--mut);font-weight:500;}
+    .gw-actions{display:flex;gap:9px;margin-top:14px;flex-wrap:wrap;}
+    .gw-btn{flex:1;min-width:150px;background:var(--peacock);color:#06121b;border:none;border-radius:11px;padding:12px 14px;font-weight:800;font-size:14px;cursor:pointer;}
+    .gw-btn.ghost{background:#0e151d;color:var(--ink);border:1px solid var(--line);font-weight:700;}
+    .gw-btn:disabled{opacity:.5;cursor:default;}
+    .gw-note{font-size:12px;line-height:1.5;margin-top:12px;padding:10px 12px;border-radius:10px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--peacock) !important;color:var(--ink);}
+    .gw-note.warn{border-left-color:var(--warn) !important;}
+    .gw-note a{color:var(--peacock);font-weight:700;}
+    .gw-loading{color:var(--mut);font-size:13px;padding:6px 0;}
+    /* connect-strava nudge */
+    .gv-nudge{margin:0 0 6px;padding:12px 14px;border-radius:12px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--strava) !important;color:var(--ink);font-size:13px;line-height:1.5;}
+    .gv-nudge a{color:var(--strava);font-weight:800;text-decoration:none;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -210,6 +233,8 @@
       window.isTrainingSession = function (e) {
         var p = getPrefs();
         var nm = ((e && e.summary) || '').toLowerCase();
+        // the app's own synced plan events always count as training (bypass hide/colour filters)
+        if (nm.indexOf('cyprus') > -1) return true;
         var hide = p.hide || [];
         for (var i = 0; i < hide.length; i++) {
           var k = (hide[i] || '').trim().toLowerCase();
@@ -319,6 +344,14 @@
               todayView.insertBefore(wc, todayView.firstChild);
               gidEnsureWeather(false);
             }
+            // weekly plan → Google Calendar card at the top of the Schedule view
+            var schedView = document.getElementById('gv-schedule');
+            if (schedView && !document.getElementById('gidWeek')) {
+              var gwc = document.createElement('div'); gwc.className = 'card'; gwc.id = 'gidWeek';
+              schedView.insertBefore(gwc, schedView.firstChild);
+              gwRender();
+            }
+            gidPolish();
             // structured meal prep + working AI generation
             window.renderMeals = gidRenderMeals;
             window.generateMeals = gidGenerateMeals;
@@ -706,6 +739,128 @@
       })
       .catch(function () { alert('Could not generate meals — try again in a moment.'); })
       .finally(function () { if (btn) { btn.textContent = old || '✨ Suggest a week'; btn.disabled = false; } });
+  }
+
+  /* ---------------- weekly training plan → Google Calendar ---------------- */
+  var GW_DOT = { run: '#ff9e42', ride: '#38bdf8', bike: '#38bdf8', cycl: '#38bdf8', swim: '#3f51b5', strength: '#f6bf26', gym: '#f6bf26', rest: '#616161' };
+  function gwDot(sport) { var s = (sport || '').toLowerCase(); for (var k in GW_DOT) { if (s.indexOf(k) > -1) return GW_DOT[k]; } return '#33b679'; }
+  function gwDates() { var out = [], base = new Date(); base.setHours(0, 0, 0, 0); for (var i = 0; i < 7; i++) out.push(new Date(base.getTime() + i * 864e5)); return out; }
+  function gwYmd(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function gwTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } }
+  function gwGet() { try { return JSON.parse(localStorage.getItem('gid_week') || 'null'); } catch (e) { return null; } }
+  function gwSet(w) { try { localStorage.setItem('gid_week', JSON.stringify(w)); } catch (e) {} }
+  function gwParse(reply) {
+    var dates = gwDates();
+    var lines = (reply || '').split('\n').map(function (s) { return s.replace(/^[\s\-•*]+/, '').replace(/^day\s*\d+\s*[:\-]?\s*/i, '').trim(); }).filter(function (s) { return s.indexOf('|') > -1; });
+    var out = [];
+    for (var i = 0; i < 7 && i < lines.length; i++) {
+      var parts = lines[i].split('|').map(function (x) { return x.trim(); });
+      var sport = parts[0] || '', time = parts[1] || '', dur = parseInt(parts[2], 10), focus = parts[3] || '';
+      if (!isFinite(dur)) dur = 60;
+      var isRest = /rest|off\b/i.test(sport);
+      if (!/^\d{1,2}:\d{2}$/.test(time)) time = '06:00';
+      out.push({ date: gwYmd(dates[i]), dow: dates[i].toLocaleDateString('en-GB', { weekday: 'short' }), sport: sport, time: time, durationMin: isRest ? 0 : dur, focus: focus, rest: isRest });
+    }
+    return out;
+  }
+  function gwRender() {
+    var el = document.getElementById('gidWeek'); if (!el) return;
+    var w = gwGet();
+    var head = '<div class="gw-h"><span>AI Training Week → Calendar</span></div>';
+    if (!w || !w.sessions || !w.sessions.length) {
+      el.innerHTML = head + '<div class="gw-sub">Generate a 7-day plan tailored to your sport, goal, fitness and fatigue — then add it straight to your Google Calendar. No manual entry.</div>'
+        + '<div class="gw-actions"><button class="gw-btn" id="gwGen">✨ Generate my week</button></div>';
+      var g = document.getElementById('gwGen'); if (g) g.addEventListener('click', gwGenerate);
+      return;
+    }
+    var rows = w.sessions.map(function (s) {
+      var meta = s.rest ? 'Recovery' : (s.time + ' · ' + s.durationMin + 'min' + (s.focus ? ' · ' + esc(s.focus) : ''));
+      return '<div class="gw-row' + (s.rest ? ' gw-rest' : '') + '">'
+        + '<div class="gw-day">' + esc(s.dow) + '</div>'
+        + '<div class="gw-dot" style="background:' + gwDot(s.sport) + '"></div>'
+        + '<div class="gw-body"><div class="gw-title">' + esc(s.rest ? 'Rest day' : (s.sport || 'Session')) + '</div><div class="gw-meta">' + meta + '</div></div></div>';
+    }).join('');
+    var synced = w.synced ? '<div class="gw-note">On your Google Calendar ✓ · ' + (w.syncedCount || 0) + ' sessions added. They also appear in your schedule below. Regenerating replaces them.</div>' : '';
+    el.innerHTML = head + '<div class="gw-sub">Your plan for the next 7 days. Add it and it lands on your phone’s calendar automatically.</div>'
+      + rows
+      + '<div class="gw-actions"><button class="gw-btn" id="gwSync">📅 Add to Google Calendar</button><button class="gw-btn ghost" id="gwRegen">↻ Regenerate</button></div>'
+      + '<div id="gwMsg"></div>' + synced
+      + '<div class="gw-actions" style="margin-top:8px"><button class="gw-btn ghost" id="gwClear" style="min-width:auto;flex:none;font-size:12px;padding:8px 12px">Remove Cyprus sessions from calendar</button></div>';
+    var sync = document.getElementById('gwSync'); if (sync) sync.addEventListener('click', function () { gwSync(); });
+    var re = document.getElementById('gwRegen'); if (re) re.addEventListener('click', gwGenerate);
+    var cl = document.getElementById('gwClear'); if (cl) cl.addEventListener('click', gwClear);
+  }
+  function gwGenerate() {
+    var el = document.getElementById('gidWeek'); if (!el) return;
+    el.innerHTML = '<div class="gw-h"><span>AI Training Week → Calendar</span></div><div class="gw-loading"><span class="gv-dots"><span></span><span></span><span></span></span> building your 7-day plan…</div>';
+    var today = new Date().toLocaleDateString('en-GB', { weekday: 'long' });
+    var prompt = "Create a 7-day training plan starting today (" + today + ", Day 1). Use the athlete's profile and current fitness in the context. "
+      + "RULES: (1) Respect 'daysPerWeek' in the profile — include Rest days so the number of training days matches it (if unknown, give ~1-2 rest days). "
+      + "(2) Only prescribe sports the athlete actually does (profile.sports); never invent a sport they don't do. "
+      + "(3) Factor current fatigue/form — if fatigue is high or form negative, go easier; never stack two hard days back to back. "
+      + "(4) Progress sensibly toward their race if one is set; vary intensity across the week. "
+      + "OUTPUT EXACTLY 7 lines, one per day in order (Day 1 = today). Each line EXACTLY: 'SPORT | HH:MM | MINUTES | short focus'. "
+      + "SPORT is ONE word (Run, Ride, Swim, Strength, or Rest). 24h times, sensible (default early morning). Rest day: 'Rest | 00:00 | 0 | recovery'. No preamble, no numbering, no other text.";
+    fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: gidPlanContext(), history: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var sessions = gwParse(d.reply || '');
+        if (!sessions.length) { el.innerHTML = '<div class="gw-h"><span>AI Training Week → Calendar</span></div><div class="gw-note warn">Could not build a plan just now. <a href="#" id="gwRetry">Try again</a></div>'; var rt = document.getElementById('gwRetry'); if (rt) rt.addEventListener('click', function (ev) { ev.preventDefault(); gwGenerate(); }); return; }
+        gwSet({ sessions: sessions, synced: false, ts: Date.now() });
+        gwRender();
+      })
+      .catch(function () { el.innerHTML = '<div class="gw-h"><span>AI Training Week → Calendar</span></div><div class="gw-note warn">Could not reach the planner. <a href="#" id="gwRetry">Try again</a></div>'; var rt = document.getElementById('gwRetry'); if (rt) rt.addEventListener('click', function (ev) { ev.preventDefault(); gwGenerate(); }); });
+  }
+  function gwSync() {
+    var w = gwGet(); if (!w || !w.sessions) return;
+    var msg = document.getElementById('gwMsg'), btn = document.getElementById('gwSync');
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    var toWrite = w.sessions.filter(function (s) { return !s.rest; });
+    fetch('/api/u/calwrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync', tz: gwTz(), sessions: toWrite }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.needReconnect || d.error === 'need_write') { if (msg) msg.innerHTML = '<div class="gw-note warn">Cyprus needs permission to add to your calendar. <a href="/api/auth/google">Reconnect Google</a> (tap Allow), then Add again.</div>'; return; }
+        if (d.needAuth) { if (msg) msg.innerHTML = '<div class="gw-note warn">Connect Google first — open Settings ⚙.</div>'; return; }
+        w.synced = true; w.syncedCount = d.created || toWrite.length; gwSet(w);
+        gwRender();
+        try { window.__gidRerender && window.__gidRerender(); } catch (e) {}
+      })
+      .catch(function () { if (msg) msg.innerHTML = '<div class="gw-note warn">Could not reach the calendar. Try again.</div>'; })
+      .finally(function () { if (btn) { btn.disabled = false; btn.textContent = '📅 Add to Google Calendar'; } });
+  }
+  function gwClear() {
+    var msg = document.getElementById('gwMsg');
+    fetch('/api/u/calwrite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'clear' }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.needReconnect) { if (msg) msg.innerHTML = '<div class="gw-note warn"><a href="/api/auth/google">Reconnect Google</a> to manage calendar sessions.</div>'; return; }
+        var w = gwGet(); if (w) { w.synced = false; w.syncedCount = 0; gwSet(w); }
+        gwRender();
+        try { window.__gidRerender && window.__gidRerender(); } catch (e) {}
+      })
+      .catch(function () {});
+  }
+
+  /* ---------------- small polish: stale copy + connect-Strava nudge ---------------- */
+  function gidPolish() {
+    try {
+      var nodes = document.querySelectorAll('#cockpit p, #cockpit .sub, #cockpit small, #cockpit .muted');
+      nodes.forEach(function (n) {
+        if (/colou?r filters are coming|Calendar-writing/i.test(n.textContent)) {
+          n.textContent = 'Sessions are read from your Google Calendar by name and colour. Use “AI Training Week” above to auto-add a plan to your calendar.';
+        }
+      });
+    } catch (e) {}
+    try {
+      fetch('/api/me', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (m) {
+        var fit = document.getElementById('gv-fitness');
+        if (fit && m && !m.strava && !document.getElementById('gvStravaNudge')) {
+          var n = document.createElement('div'); n.id = 'gvStravaNudge'; n.className = 'gv-nudge';
+          n.innerHTML = 'Connect <a href="/api/auth/strava">Strava</a> to unlock Fitness, Fatigue &amp; Form — they read from your activities. Everything else works without it.';
+          fit.insertBefore(n, fit.firstChild);
+        }
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   /* ---------------- weather (Open-Meteo, free, no key) — refreshes hourly ---------------- */
