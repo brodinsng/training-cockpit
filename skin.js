@@ -224,6 +224,27 @@
     .gr-drivers{font-size:12px;color:var(--mut);}
     .gr-risk{margin-top:10px;font-size:12px;line-height:1.5;padding:9px 11px;border-radius:10px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--warn) !important;color:var(--ink);}
     .gr-loading{color:var(--mut);font-size:13px;}
+    /* race autocomplete dropdown */
+    #rcDD{position:fixed;z-index:90;background:var(--card);border:1px solid var(--line);border-radius:12px;max-height:280px;overflow:auto;box-shadow:0 14px 32px rgba(0,0,0,.55);}
+    .rc-opt{padding:10px 13px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+    .rc-opt:last-child{border-bottom:none;}
+    .rc-opt.on,.rc-opt:hover{background:#1a2430;}
+    .rc-opt .f{font-size:19px;flex:none;}
+    .rc-opt .t{flex:1;min-width:0;}
+    .rc-opt .n{font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .rc-opt .s{font-size:11px;color:var(--mut);}
+    .rc-opt .badge{flex:none;font-size:10px;font-weight:800;color:var(--peacock);border:1px solid var(--line);border-radius:6px;padding:2px 7px;}
+    /* race conditions card */
+    .rc-card{margin-top:14px;background:#10171f;border:1px solid var(--line);border-radius:14px;padding:14px;animation:gvIn .2s ease;}
+    .rc-top{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+    .rc-flag{font-size:30px;line-height:1;flex:none;}
+    .rc-name{font-size:15px;font-weight:800;color:var(--ink);line-height:1.2;}
+    .rc-loc{font-size:12px;color:var(--mut);margin-top:2px;}
+    .rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .rc-tile{background:#0e151d;border:1px solid var(--line);border-radius:10px;padding:9px 11px;}
+    .rc-tile .k{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--mut);}
+    .rc-tile .v{font-size:13px;color:var(--ink);margin-top:3px;line-height:1.35;}
+    .rc-tips{margin-top:12px;font-size:12px;line-height:1.5;color:var(--ink);padding:9px 11px;border-radius:10px;background:#0e151d;border:1px solid var(--line);border-left:3px solid var(--peacock) !important;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -399,6 +420,7 @@
               gwRender();
             }
             gidPolish();
+            rcInit();
             // structured meal prep + working AI generation
             window.renderMeals = gidRenderMeals;
             window.generateMeals = gidGenerateMeals;
@@ -901,6 +923,106 @@
         try { window.__gidRerender && window.__gidRerender(); } catch (e) {}
       })
       .catch(function () {});
+  }
+
+  /* ---------------- Race intelligence: autocomplete famous races + live conditions ----------------
+     Static facts (location, course profile, swim venue) are curated; air temperature is pulled LIVE
+     from Open-Meteo historical data for the race's location + date. Starter set — the weekly loop grows it. */
+  var DIST = { marathon: '42.2 km', half: '21.1 km', ironman: '3.8k swim · 180k bike · 42.2k run', '70.3': '1.9k swim · 90k bike · 21.1k run', olympic: '1.5k swim · 40k bike · 10k run' };
+  var TYPEBADGE = { marathon: 'MAR', half: 'HALF', ironman: 'IM', '70.3': '70.3', olympic: 'OLY' };
+  var RACES = [
+    { n: 'Tokyo Marathon', city: 'Tokyo', country: 'Japan', cc: 'JP', lat: 35.68, lon: 139.76, m: 3, d: 1, t: 'marathon', p: 'flat', pn: 'Flat & fast city loop' },
+    { n: 'Boston Marathon', city: 'Boston', country: 'USA', cc: 'US', lat: 42.36, lon: -71.06, m: 4, d: 20, t: 'marathon', p: 'hilly', pn: 'Rolling, Heartbreak Hill; net downhill' },
+    { n: 'London Marathon', city: 'London', country: 'UK', cc: 'GB', lat: 51.51, lon: -0.13, m: 4, d: 26, t: 'marathon', p: 'flat', pn: 'Flat, fast, a few bridges' },
+    { n: 'Paris Marathon', city: 'Paris', country: 'France', cc: 'FR', lat: 48.85, lon: 2.35, m: 4, d: 13, t: 'marathon', p: 'rolling', pn: 'Gently rolling, cobbles in places' },
+    { n: 'Gold Coast Marathon', city: 'Gold Coast', country: 'Australia', cc: 'AU', lat: -28.0, lon: 153.43, m: 7, d: 6, t: 'marathon', p: 'flat', pn: 'Pancake flat, coastal' },
+    { n: 'Sydney Marathon', city: 'Sydney', country: 'Australia', cc: 'AU', lat: -33.87, lon: 151.21, m: 8, d: 30, t: 'marathon', p: 'hilly', pn: 'Hilliest Major; Harbour Bridge' },
+    { n: 'Berlin Marathon', city: 'Berlin', country: 'Germany', cc: 'DE', lat: 52.52, lon: 13.4, m: 9, d: 27, t: 'marathon', p: 'flat', pn: 'Pancake flat — record course' },
+    { n: 'Chicago Marathon', city: 'Chicago', country: 'USA', cc: 'US', lat: 41.88, lon: -87.63, m: 10, d: 11, t: 'marathon', p: 'flat', pn: 'Flat & fast, big crowds' },
+    { n: 'Amsterdam Marathon', city: 'Amsterdam', country: 'Netherlands', cc: 'NL', lat: 52.37, lon: 4.9, m: 10, d: 19, t: 'marathon', p: 'flat', pn: 'Flat, stadium finish' },
+    { n: 'New York City Marathon', city: 'New York', country: 'USA', cc: 'US', lat: 40.71, lon: -74.01, m: 11, d: 1, t: 'marathon', p: 'rolling', pn: 'Rolling, five boroughs & bridges' },
+    { n: 'Valencia Marathon', city: 'Valencia', country: 'Spain', cc: 'ES', lat: 39.47, lon: -0.38, m: 12, d: 7, t: 'marathon', p: 'flat', pn: 'Sea-level — among the flattest' },
+    { n: 'Standard Chartered Singapore Marathon', city: 'Singapore', country: 'Singapore', cc: 'SG', lat: 1.29, lon: 103.85, m: 12, d: 7, t: 'marathon', p: 'flat', pn: 'Flat; hot & humid' },
+    { n: 'Great North Run', city: 'Newcastle', country: 'UK', cc: 'GB', lat: 54.97, lon: -1.61, m: 9, d: 7, t: 'half', p: 'rolling', pn: "World's biggest half; rolling to coast" },
+    { n: 'IRONMAN World Championship (Kona)', city: 'Kailua-Kona', country: 'USA', cc: 'US', lat: 19.64, lon: -155.99, m: 10, d: 10, t: 'ironman', p: 'rolling', pn: 'Lava fields, heat & crosswinds', w: { temp: 26, note: 'warm ocean, usually non-wetsuit' } },
+    { n: 'IRONMAN Cairns', city: 'Cairns', country: 'Australia', cc: 'AU', lat: -16.92, lon: 145.77, m: 6, d: 14, t: 'ironman', p: 'rolling', pn: 'Ocean swim, scenic rolling bike', w: { temp: 25, note: 'warm ocean, often non-wetsuit' } },
+    { n: 'IRONMAN Frankfurt (European Champ)', city: 'Frankfurt', country: 'Germany', cc: 'DE', lat: 50.11, lon: 8.68, m: 6, d: 28, t: 'ironman', p: 'rolling', pn: 'Lake swim, rolling bike', w: { temp: 22, note: 'lake, wetsuit often legal' } },
+    { n: 'Challenge Roth', city: 'Roth', country: 'Germany', cc: 'DE', lat: 49.25, lon: 11.09, m: 7, d: 6, t: 'ironman', p: 'rolling', pn: 'Iconic; fast rolling bike', w: { temp: 21, note: 'canal, wetsuit-legal' } },
+    { n: 'IRONMAN Nice', city: 'Nice', country: 'France', cc: 'FR', lat: 43.7, lon: 7.27, m: 6, d: 28, t: 'ironman', p: 'hilly', pn: 'Big Alpine-style climbs', w: { temp: 22, note: 'Mediterranean sea swim' } },
+    { n: 'IRONMAN Lanzarote', city: 'Puerto del Carmen', country: 'Spain', cc: 'ES', lat: 28.92, lon: -13.66, m: 5, d: 17, t: 'ironman', p: 'hilly', pn: 'Relentless hills & wind', w: { temp: 20, note: 'Atlantic; wetsuit-legal' } },
+    { n: 'IRONMAN Western Australia (Busselton)', city: 'Busselton', country: 'Australia', cc: 'AU', lat: -33.65, lon: 115.35, m: 12, d: 7, t: 'ironman', p: 'flat', pn: 'Flat & fast; jetty swim', w: { temp: 21, note: 'wetsuit-legal' } },
+    { n: 'IRONMAN 70.3 World Championship (Nice)', city: 'Nice', country: 'France', cc: 'FR', lat: 43.7, lon: 7.27, m: 9, d: 13, t: '70.3', p: 'hilly', pn: 'Climbing bike course', w: { temp: 23, note: 'Mediterranean sea swim' } },
+    { n: 'IRONMAN 70.3 Geelong', city: 'Geelong', country: 'Australia', cc: 'AU', lat: -38.15, lon: 144.36, m: 3, d: 22, t: '70.3', p: 'flat', pn: 'Flat, fast bay-front course', w: { temp: 15, note: 'cool bay — wetsuit-legal' } },
+    { n: 'IRONMAN 70.3 Melbourne', city: 'Melbourne', country: 'Australia', cc: 'AU', lat: -37.81, lon: 144.96, m: 11, d: 17, t: '70.3', p: 'flat', pn: 'Flat coastal course', w: { temp: 18, note: 'bay swim; often wetsuit-legal' } },
+    { n: 'IRONMAN 70.3 Bintan', city: 'Bintan', country: 'Indonesia', cc: 'ID', lat: 1.07, lon: 104.42, m: 8, d: 24, t: '70.3', p: 'rolling', pn: 'Warm island; rolling bike', w: { temp: 29, note: 'warm sea — non-wetsuit' } },
+    { n: 'IRONMAN 70.3 Desaru Coast', city: 'Desaru', country: 'Malaysia', cc: 'MY', lat: 1.55, lon: 104.27, m: 9, d: 21, t: '70.3', p: 'rolling', pn: 'Warm, humid; rolling bike', w: { temp: 29, note: 'warm sea — non-wetsuit' } }
+  ];
+  function rcFlag(cc) { try { return cc.toUpperCase().replace(/./g, function (c) { return String.fromCodePoint(127397 + c.charCodeAt()); }); } catch (e) { return '🏁'; } }
+  var RCMON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function rcNextDate(r) { var now = new Date(); now.setHours(0, 0, 0, 0); var y = now.getFullYear(); var dt = new Date(y, r.m - 1, r.d); if (dt < now) dt = new Date(y + 1, r.m - 1, r.d); return dt; }
+  function rcYmd(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function rcTemp(r, cb) {
+    function pad(n) { return ('0' + n).slice(-2); }
+    var yr = new Date().getFullYear() - 1;
+    var base = new Date(yr, r.m - 1, r.d), s = new Date(base.getTime() - 3 * 864e5), e = new Date(base.getTime() + 3 * 864e5);
+    var url = 'https://archive-api.open-meteo.com/v1/archive?latitude=' + r.lat + '&longitude=' + r.lon
+      + '&start_date=' + s.getFullYear() + '-' + pad(s.getMonth() + 1) + '-' + pad(s.getDate())
+      + '&end_date=' + e.getFullYear() + '-' + pad(e.getMonth() + 1) + '-' + pad(e.getDate())
+      + '&daily=temperature_2m_max,temperature_2m_min&timezone=auto';
+    fetch(url).then(function (x) { return x.json(); }).then(function (d) {
+      var mx = (d.daily && d.daily.temperature_2m_max) || [], mn = (d.daily && d.daily.temperature_2m_min) || [];
+      mx = mx.filter(function (v) { return v != null; }); mn = mn.filter(function (v) { return v != null; });
+      if (!mx.length || !mn.length) { cb(null); return; }
+      cb({ lo: Math.round(mn.reduce(function (a, b) { return a + b; }, 0) / mn.length), hi: Math.round(mx.reduce(function (a, b) { return a + b; }, 0) / mx.length) });
+    }).catch(function () { cb(null); });
+  }
+  function rcTips(r, temp) {
+    var t = [];
+    if (r.p === 'hilly') t.push('hilly — build hill strength & climbing');
+    else if (r.p === 'rolling') t.push('rolling — include some hill work');
+    else t.push('flat & fast — sharpen race-pace & run economy');
+    if (temp && temp.hi >= 28) t.push('hot — heat-acclimate & rehearse hydration');
+    else if (temp && temp.hi <= 10) t.push('cold — plan warm-up & layers');
+    if (r.w) { if (r.w.temp <= 16) t.push('cold swim — practise in a wetsuit'); else if (r.w.temp >= 27) t.push('warm swim — likely non-wetsuit'); }
+    return t.join(' · ');
+  }
+  function rcRenderCard(r) {
+    var host = document.getElementById('rcCard');
+    if (!host) { var af = document.querySelector('.addform'); if (!af) return; host = document.createElement('div'); host.id = 'rcCard'; af.parentNode.insertBefore(host, af.nextSibling); }
+    function tile(k, v) { return '<div class="rc-tile"><div class="k">' + k + '</div><div class="v">' + esc(v) + '</div></div>'; }
+    function draw(tempStr) {
+      host.innerHTML = '<div class="rc-card"><div class="rc-top"><span class="rc-flag">' + rcFlag(r.cc) + '</span><div><div class="rc-name">' + esc(r.n) + '</div><div class="rc-loc">' + esc(r.city + ', ' + r.country) + ' · typically ' + RCMON[r.m - 1] + '</div></div></div>'
+        + '<div class="rc-grid">' + tile('Distance', DIST[r.t] || '—') + tile('Course', (r.p.charAt(0).toUpperCase() + r.p.slice(1)) + (r.pn ? ' — ' + r.pn : '')) + tile('Typical air temp', tempStr) + (r.w ? tile('Water', r.w.temp + '°C · ' + r.w.note) : '') + '</div>'
+        + '<div class="rc-tips">🎯 Train for it: ' + esc(rcTips(r, host.__temp)) + '</div>'
+        + '<div class="rc-loc" style="margin-top:10px">Date set below — tap <b>Add race</b> to start your countdown.</div>';
+    }
+    draw('checking…');
+    rcTemp(r, function (temp) { host.__temp = temp; draw(temp ? temp.lo + '–' + temp.hi + '°C' : 'unavailable'); });
+  }
+  function rcInit() {
+    var rn = document.getElementById('rn'); if (!rn || rn.__rcInit) return; rn.__rcInit = true;
+    var dd = null, matches = [];
+    function close() { if (dd) { dd.remove(); dd = null; } }
+    function place() { if (!dd) return; var r = rn.getBoundingClientRect(); dd.style.left = r.left + 'px'; dd.style.top = (r.bottom + 4) + 'px'; dd.style.width = r.width + 'px'; }
+    function open() {
+      var q = (rn.value || '').trim().toLowerCase();
+      if (q.length < 2) { close(); return; }
+      matches = RACES.filter(function (r) { return (r.n + ' ' + r.city + ' ' + r.country + ' ' + r.t).toLowerCase().indexOf(q) > -1; }).slice(0, 8);
+      if (!matches.length) { close(); return; }
+      if (!dd) { dd = document.createElement('div'); dd.id = 'rcDD'; document.body.appendChild(dd); }
+      dd.innerHTML = matches.map(function (r, i) { return '<div class="rc-opt" data-i="' + i + '"><span class="f">' + rcFlag(r.cc) + '</span><div class="t"><div class="n">' + esc(r.n) + '</div><div class="s">' + esc(r.city + ', ' + r.country) + '</div></div><span class="badge">' + (TYPEBADGE[r.t] || '') + '</span></div>'; }).join('');
+      place();
+      dd.querySelectorAll('.rc-opt').forEach(function (o) { o.addEventListener('mousedown', function (ev) { ev.preventDefault(); pick(matches[+o.getAttribute('data-i')]); }); });
+    }
+    function pick(r) {
+      rn.value = r.n;
+      var rd = document.getElementById('rd'); if (rd) { rd.value = rcYmd(rcNextDate(r)); try { rd.dispatchEvent(new Event('input', { bubbles: true })); rd.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
+      close(); rcRenderCard(r);
+    }
+    rn.addEventListener('input', open);
+    rn.addEventListener('focus', open);
+    rn.addEventListener('blur', function () { setTimeout(close, 150); });
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
   }
 
   /* ---------------- Readiness Score (0–100) — form + acute:chronic load + how you feel ----------------
