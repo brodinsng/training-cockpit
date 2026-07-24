@@ -929,7 +929,7 @@
      Static facts (location, course profile, swim venue) are curated; air temperature is pulled LIVE
      from Open-Meteo historical data for the race's location + date. Starter set — the weekly loop grows it. */
   var DIST = { marathon: '42.2 km', half: '21.1 km', ironman: '3.8k swim · 180k bike · 42.2k run', '70.3': '1.9k swim · 90k bike · 21.1k run', olympic: '1.5k swim · 40k bike · 10k run' };
-  var TYPEBADGE = { marathon: 'MAR', half: 'HALF', ironman: 'IM', '70.3': '70.3', olympic: 'OLY' };
+  var TYPEBADGE = { marathon: 'MAR', half: 'HALF', ironman: 'IM', '70.3': '70.3', olympic: 'OLY', ultra: 'ULTRA', trail: 'TRAIL', cycling: 'RIDE', granfondo: 'FONDO', swim: 'SWIM', run: 'RUN', xtri: 'XTRI' };
   var RACES = [
     { n: 'Tokyo Marathon', city: 'Tokyo', country: 'Japan', cc: 'JP', lat: 35.68, lon: 139.76, m: 3, d: 1, t: 'marathon', p: 'flat', pn: 'Flat & fast city loop' },
     { n: 'Boston Marathon', city: 'Boston', country: 'USA', cc: 'US', lat: 42.36, lon: -71.06, m: 4, d: 20, t: 'marathon', p: 'hilly', pn: 'Rolling, Heartbreak Hill; net downhill' },
@@ -955,7 +955,29 @@
     { n: 'IRONMAN 70.3 Geelong', city: 'Geelong', country: 'Australia', cc: 'AU', lat: -38.15, lon: 144.36, m: 3, d: 22, t: '70.3', p: 'flat', pn: 'Flat, fast bay-front course', w: { temp: 15, note: 'cool bay — wetsuit-legal' } },
     { n: 'IRONMAN 70.3 Melbourne', city: 'Melbourne', country: 'Australia', cc: 'AU', lat: -37.81, lon: 144.96, m: 11, d: 17, t: '70.3', p: 'flat', pn: 'Flat coastal course', w: { temp: 18, note: 'bay swim; often wetsuit-legal' } },
     { n: 'IRONMAN 70.3 Bintan', city: 'Bintan', country: 'Indonesia', cc: 'ID', lat: 1.07, lon: 104.42, m: 8, d: 24, t: '70.3', p: 'rolling', pn: 'Warm island; rolling bike', w: { temp: 29, note: 'warm sea — non-wetsuit' } },
-    { n: 'IRONMAN 70.3 Desaru Coast', city: 'Desaru', country: 'Malaysia', cc: 'MY', lat: 1.55, lon: 104.27, m: 9, d: 21, t: '70.3', p: 'rolling', pn: 'Warm, humid; rolling bike', w: { temp: 29, note: 'warm sea — non-wetsuit' } }
+    { n: 'IRONMAN 70.3 Desaru Coast', city: 'Desaru', country: 'Malaysia', cc: 'MY', lat: 1.55, lon: 104.27, m: 9, d: 21, t: '70.3', p: 'rolling', pn: 'Warm, humid; rolling bike', w: { temp: 29, note: 'warm sea — non-wetsuit' } },
+    { n: 'Marine Corps Marathon', city: 'Arlington', country: 'USA', cc: 'US', lat: 38.88, lon: -77.05, m: 10, d: 25, t: 'marathon', p: 'rolling', pn: 'Rolling; monuments & bridges' },
+    { n: 'Big Sur International Marathon', city: 'Big Sur', country: 'USA', cc: 'US', lat: 36.27, lon: -121.81, m: 4, d: 26, t: 'marathon', p: 'hilly', pn: 'Coastal cliffs; Hurricane Point climb' },
+    { n: 'Honolulu Marathon', city: 'Honolulu', country: 'USA', cc: 'US', lat: 21.31, lon: -157.86, m: 12, d: 13, t: 'marathon', p: 'flat', pn: 'Flat; hot & humid, pre-dawn start' },
+    { n: 'Athens Authentic Marathon', city: 'Athens', country: 'Greece', cc: 'GR', lat: 37.98, lon: 23.73, m: 11, d: 8, t: 'marathon', p: 'hilly', pn: 'Long uphill 10-31 km; the original course' },
+    { n: 'City2Surf', city: 'Sydney', country: 'Australia', cc: 'AU', lat: -33.87, lon: 151.21, m: 8, d: 9, t: 'run', p: 'hilly', pn: '14 km; Heartbreak Hill to Bondi', dl: '14 km' },
+    { n: 'UTMB (Ultra-Trail du Mont-Blanc)', city: 'Chamonix', country: 'France', cc: 'FR', lat: 45.92, lon: 6.87, m: 8, d: 28, t: 'trail', p: 'hilly', pn: '171 km loop around Mont Blanc', dl: '171 km \u00b7 10,000 m+' },
+    { n: 'Western States 100', city: 'Olympic Valley', country: 'USA', cc: 'US', lat: 39.2, lon: -120.24, m: 6, d: 27, t: 'trail', p: 'hilly', pn: 'Sierra trail; canyons & heat', dl: '161 km (100 mi)' },
+    { n: 'Comrades Marathon', city: 'Durban', country: 'South Africa', cc: 'ZA', lat: -29.86, lon: 31.02, m: 6, d: 14, t: 'ultra', p: 'hilly', pn: 'Road ultra; the Big Five hills', dl: '~87 km' },
+    { n: 'Two Oceans Marathon', city: 'Cape Town', country: 'South Africa', cc: 'ZA', lat: -34.05, lon: 18.46, m: 4, d: 11, t: 'ultra', p: 'hilly', pn: 'Chapman\u2019s Peak & Constantia Nek', dl: '56 km' },
+    { n: 'Marathon des Sables', city: 'Sahara', country: 'Morocco', cc: 'MA', lat: 30.93, lon: -5.0, m: 4, d: 5, t: 'ultra', p: 'hilly', pn: 'Self-supported desert stage race', dl: '~250 km \u00b7 6 stages' },
+    { n: 'Leadville Trail 100 Run', city: 'Leadville', country: 'USA', cc: 'US', lat: 39.25, lon: -106.29, m: 8, d: 22, t: 'trail', p: 'hilly', pn: 'At altitude (3,000-3,850 m)', dl: '161 km (100 mi)' },
+    { n: 'Ultra-Trail Australia', city: 'Blue Mountains', country: 'Australia', cc: 'AU', lat: -33.73, lon: 150.31, m: 5, d: 16, t: 'trail', p: 'hilly', pn: 'Stairs, escarpments & bush', dl: '100 km' },
+    { n: 'Cape Town Cycle Tour', city: 'Cape Town', country: 'South Africa', cc: 'ZA', lat: -33.92, lon: 18.42, m: 3, d: 8, t: 'cycling', p: 'rolling', pn: 'Peninsula loop; often windy', dl: '109 km' },
+    { n: 'L\u2019\u00c9tape du Tour', city: 'French Alps', country: 'France', cc: 'FR', lat: 45.17, lon: 6.6, m: 7, d: 19, t: 'granfondo', p: 'hilly', pn: 'A Tour de France mountain stage', dl: '~170 km \u00b7 big cols' },
+    { n: 'Maratona dles Dolomites', city: 'Corvara', country: 'Italy', cc: 'IT', lat: 46.55, lon: 11.87, m: 7, d: 5, t: 'granfondo', p: 'hilly', pn: 'Seven Dolomite passes', dl: '138 km \u00b7 4,230 m+' },
+    { n: 'GFNY (Gran Fondo New York)', city: 'New York', country: 'USA', cc: 'US', lat: 40.85, lon: -73.97, m: 5, d: 17, t: 'granfondo', p: 'hilly', pn: 'Up the Hudson; timed climbs', dl: '160 km' },
+    { n: 'Peaks Challenge Falls Creek', city: 'Falls Creek', country: 'Australia', cc: 'AU', lat: -36.87, lon: 147.28, m: 3, d: 8, t: 'granfondo', p: 'hilly', pn: 'Alpine loop; 4,000 m of climbing', dl: '235 km \u00b7 4,000 m+' },
+    { n: 'Rottnest Channel Swim', city: 'Cottesloe', country: 'Australia', cc: 'AU', lat: -31.99, lon: 115.75, m: 2, d: 21, t: 'swim', p: 'flat', pn: 'Open-water crossing to Rottnest', dl: '19.7 km open water', w: { temp: 22, note: 'ocean; solo or team' } },
+    { n: 'Midmar Mile', city: 'Midmar Dam', country: 'South Africa', cc: 'ZA', lat: -29.51, lon: 30.19, m: 2, d: 7, t: 'swim', p: 'flat', pn: 'World\u2019s largest open-water swim', dl: '1.6 km (1 mi)', w: { temp: 23, note: 'freshwater dam' } },
+    { n: 'Norseman Xtreme Triathlon', city: 'Eidfjord', country: 'Norway', cc: 'NO', lat: 60.47, lon: 7.07, m: 8, d: 1, t: 'xtri', p: 'hilly', pn: 'Iron-distance; 5,000 m climb, mountain finish', dl: '3.8k swim \u00b7 180k bike \u00b7 42.2k run', w: { temp: 14, note: 'cold fjord \u2014 wetsuit, ferry jump start' } },
+    { n: 'Escape from Alcatraz Triathlon', city: 'San Francisco', country: 'USA', cc: 'US', lat: 37.81, lon: -122.42, m: 6, d: 7, t: 'xtri', p: 'hilly', pn: 'Alcatraz swim, hilly bike, sand-ladder run', dl: '2.4k swim \u00b7 29k bike \u00b7 13k run', w: { temp: 14, note: 'cold bay \u2014 wetsuit essential' } },
+    { n: 'IRONMAN Barcelona', city: 'Calella', country: 'Spain', cc: 'ES', lat: 41.61, lon: 2.65, m: 10, d: 4, t: 'ironman', p: 'flat', pn: 'Flat, fast coastal bike', w: { temp: 20, note: 'Mediterranean sea swim' } },
   ];
   function rcFlag(cc) { try { return cc.toUpperCase().replace(/./g, function (c) { return String.fromCodePoint(127397 + c.charCodeAt()); }); } catch (e) { return '🏁'; } }
   var RCMON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -978,6 +1000,7 @@
   }
   function rcTips(r, temp) {
     var t = [];
+    if (r.t === 'ultra' || r.t === 'trail') t.push('long \u2014 build time-on-feet & fuelling');
     if (r.p === 'hilly') t.push('hilly — build hill strength & climbing');
     else if (r.p === 'rolling') t.push('rolling — include some hill work');
     else t.push('flat & fast — sharpen race-pace & run economy');
@@ -992,7 +1015,7 @@
     function tile(k, v) { return '<div class="rc-tile"><div class="k">' + k + '</div><div class="v">' + esc(v) + '</div></div>'; }
     function draw(tempStr) {
       host.innerHTML = '<div class="rc-card"><div class="rc-top"><span class="rc-flag">' + rcFlag(r.cc) + '</span><div><div class="rc-name">' + esc(r.n) + '</div><div class="rc-loc">' + esc(r.city + ', ' + r.country) + ' · typically ' + RCMON[r.m - 1] + '</div></div></div>'
-        + '<div class="rc-grid">' + tile('Distance', DIST[r.t] || '—') + tile('Course', (r.p.charAt(0).toUpperCase() + r.p.slice(1)) + (r.pn ? ' — ' + r.pn : '')) + tile('Typical air temp', tempStr) + (r.w ? tile('Water', r.w.temp + '°C · ' + r.w.note) : '') + '</div>'
+        + '<div class="rc-grid">' + tile('Distance', r.dl || DIST[r.t] || '—') + tile('Course', (r.p.charAt(0).toUpperCase() + r.p.slice(1)) + (r.pn ? ' — ' + r.pn : '')) + tile('Typical air temp', tempStr) + (r.w ? tile('Water', r.w.temp + '°C · ' + r.w.note) : '') + '</div>'
         + '<div class="rc-tips">🎯 Train for it: ' + esc(rcTips(r, host.__temp)) + '</div>'
         + '<div class="rc-loc" style="margin-top:10px">Date set below — tap <b>Add race</b> to start your countdown.</div>';
     }
