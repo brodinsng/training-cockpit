@@ -1595,3 +1595,47 @@
   function tick(){ensureNav();watch();updateNav();}
   setInterval(tick,1500);setTimeout(function(){tick();restore();},700);setTimeout(restore,1700);
 })();
+
+;(function(){
+  function b64ToU8(s){ s=s.split('-').join('+').split('_').join('/'); while(s.length%4)s+='='; var bin=atob(s); var u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; }
+  var MSG='';
+  function supp(){ return ('Notification' in window)&&('serviceWorker' in navigator)&&('PushManager' in window); }
+  function perm(){ return supp()?Notification.permission:'unsupported'; }
+  function curSub(){ if(!supp())return Promise.resolve(null); return navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).catch(function(){ return null; }); }
+  function enable(btn){
+    btn.textContent='Enabling...'; btn.disabled=true;
+    Notification.requestPermission().then(function(p){
+      if(p!=='granted'){ MSG='Notifications blocked. Allow them for this site, then reload.'; render(); return; }
+      return navigator.serviceWorker.ready.then(function(reg){
+        return fetch('/api/u/subscribe',{credentials:'include'}).then(function(r){return r.json();}).then(function(k){
+          if(!k.publicKey){ MSG='Server key missing.'; render(); return; }
+          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)}).then(function(sub){
+            var geo=null; try{ geo=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){}
+            var lat=geo?(geo.lat!=null?geo.lat:(geo.latitude!=null?geo.latitude:null)):null;
+            var lon=geo?(geo.lon!=null?geo.lon:(geo.longitude!=null?geo.longitude:null)):null;
+            return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:lat,lon:lon})}).then(function(){ MSG=''; render(); });
+          });
+        });
+      });
+    }).catch(function(e){ MSG='Could not enable: '+((e&&e.message)||e); render(); });
+  }
+  function disable(){ curSub().then(function(s){ if(!s)return; fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); }).then(function(){ MSG=''; render(); }); }
+  function render(){
+    var host=document.getElementById('gv-today'); if(!host) return;
+    var card=document.getElementById('gidNotif');
+    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; if(a.getAttribute('data-na')==='on')enable(a); else disable(); }); }
+    var p=perm();
+    curSub().then(function(sub){
+      var H='<div class="gf-k">Notifications</div>';
+      if(p==='unsupported'){ H+='<div class="gf-sub" style="margin-top:0">This browser does not support push notifications.</div>'; }
+      else if(p==='denied'){ H+='<div class="gf-sub" style="margin-top:0">Blocked. Allow notifications for this site in settings, then reload.</div>'; }
+      else if(sub){ H+='<div class="gf-row"><span class="l">Schedule &amp; weather alerts</span><span class="v" style="color:var(--good)">On</span></div><div style="margin-top:10px"><button class="gf-btn" data-na="off">Turn off</button></div>'; }
+      else { H+='<div class="gf-sub" style="margin-top:0">Get alerted when your plan or the weather changes — without opening the app.</div><div style="margin-top:10px"><button class="gf-btn" data-na="on">Enable notifications</button></div>'; }
+      if(MSG) H+='<div class="gf-sub" style="margin-top:8px">'+MSG+'</div>';
+      var sig=p+'|'+(sub?'1':'0')+'|'+MSG;
+      if(card.getAttribute('data-sig')!==sig){ card.innerHTML=H; card.setAttribute('data-sig',sig); }
+    });
+  }
+  setInterval(render,2500); setTimeout(render,1000);
+  window.__gidNotifCss=1;
+})();
