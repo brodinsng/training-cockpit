@@ -1368,7 +1368,7 @@
       var bal=chart('balance');
       if(bal){var lb=bal.data.labels||[],da=(bal.data.datasets[0]||{}).data||[],tt=da.reduce(function(a,b){return a+(+b||0);},0)||1;
         if(lb.length){var col={run:'var(--run)',ride:'var(--ride)',bike:'var(--ride)',swim:'var(--swim)'};
-          var rows=lb.map(function(l,i){var k=(''+l).toLowerCase(),c=col[k]||'var(--peacock)',p=Math.round((da[i]||0)/tt*100);return '<div class="gf-row"><span class="l">'+E(l)+'</span><span class="v">'+p+'%</span></div><div class="gf-bar"><i style="width:'+p+'%;background:'+c+'"></i></div>';}).join('');
+          var rows=lb.map(function(l,i){var nm=(''+l).replace(/[^A-Za-z].*$/,'')||(''+l),k=nm.toLowerCase(),c=col[k]||'var(--peacock)',p=Math.round((da[i]||0)/tt*100);return '<div class="gf-row"><span class="l">'+E(nm)+'</span><span class="v">'+p+'%</span></div><div class="gf-bar"><i style="width:'+p+'%;background:'+c+'"></i></div>';}).join('');
           H+='<div class="gf-card"><div class="gf-k">Discipline balance (28 days)</div>'+rows+'</div>';}}
       var sig=[Math.round(ctl),Math.round(atl),Math.round(tsb),weeks,hist.length].join('|');
       if(panel.getAttribute('data-sig')!==sig){panel.innerHTML=H;panel.setAttribute('data-sig',sig);}
