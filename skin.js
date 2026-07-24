@@ -1315,3 +1315,70 @@
   setTimeout(build, 1000);
   setTimeout(build, 2600);
 })();
+
+;(function(){
+  function E(s){s=(s==null?'':''+s);return s.replace(/[&<>"]/g,function(c){return c==='&'?'&amp;':c==='<'?'&lt;':c==='>'?'&gt;':'&quot;';});}
+  function num(el){return el?parseFloat((el.textContent||'').replace(/[^0-9.-]/g,'')):NaN;}
+  function chart(id){try{return (window.Chart&&Chart.getChart)?Chart.getChart(document.getElementById(id)):null;}catch(e){return null;}}
+  function tone(t){return t==='good'?'var(--good)':t==='warn'?'var(--warn)':t==='bad'?'var(--bad)':'var(--mut)';}
+  function fresh(tsb){if(tsb>=15)return{w:'Very fresh',t:'good',m:'Peaked & well rested'};if(tsb>=5)return{w:'Fresh',t:'good',m:'Rested and ready'};if(tsb>=-5)return{w:'Neutral',t:'mut',m:'Balanced — maintaining'};if(tsb>=-15)return{w:'Fatigued',t:'warn',m:'Carrying fatigue'};return{w:'Very fatigued',t:'bad',m:'Deep fatigue — ease off'};}
+  function band(name){var s=(name||'').toLowerCase();if(s.indexOf('70.3')>-1||s.indexOf('olympic')>-1)return{lo:75,hi:95,mid:85,lbl:'70.3 / Olympic'};if(s.indexOf('ironman')>-1||s.indexOf('xtri')>-1||s.indexOf('norseman')>-1)return{lo:95,hi:125,mid:110,lbl:'Iron-distance'};if(s.indexOf('ultra')>-1||s.indexOf('utmb')>-1||s.indexOf('comrades')>-1||s.indexOf('trail')>-1)return{lo:90,hi:120,mid:105,lbl:'Ultra / trail'};if(s.indexOf('half mara')>-1)return{lo:55,hi:75,mid:65,lbl:'Half marathon'};if(s.indexOf('mara')>-1)return{lo:70,hi:90,mid:80,lbl:'Marathon'};if(s.indexOf('fondo')>-1||s.indexOf('etape')>-1||s.indexOf('cycle')>-1)return{lo:70,hi:100,mid:85,lbl:'Gran fondo'};return{lo:70,hi:90,mid:80,lbl:'Endurance race'};}
+  var CSS='#gv-fitness.gidon>*:not(#gidFit){display:none!important}#gidFit{display:flex;flex-direction:column;gap:14px}.gf-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}.gf-k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:800;margin-bottom:12px}.gf-hero{display:flex;align-items:center;gap:16px}.gf-ring{width:96px;height:96px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;border:6px solid var(--line)}.gf-ring .w{font-size:15px;font-weight:800;text-align:center;padding:0 6px;line-height:1.15}.gf-hint{color:var(--mut);font-size:13px;margin-top:6px}.gf-trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.gf-tile{background:#0e151d;border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}.gf-tile .b{font-size:22px;font-weight:800}.gf-tile .c{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);margin-top:2px}.gf-row{display:flex;justify-content:space-between;align-items:baseline;margin:7px 0}.gf-row .l{color:var(--mut);font-size:13px}.gf-row .v{font-weight:700}.gf-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}.gf-bar{height:10px;border-radius:6px;background:#0e151d;overflow:hidden;margin:6px 0;position:relative}.gf-bar>i{display:block;height:100%}.gf-bad{color:var(--bad)}.gf-mut{color:var(--mut)}.gf-spark{display:flex;align-items:flex-end;gap:3px;height:38px;margin-top:8px}.gf-spark>i{flex:1;background:var(--peacock);border-radius:2px;min-height:3px}';
+  function ck(v){var a=['—','poor','low','ok','good','great'];return v==null?'—':(a[v]||v);}
+  function draw(){
+    var fit=document.getElementById('gv-fitness'); if(!fit) return;
+    try{
+      var panel=document.getElementById('gidFit');
+      if(!panel){panel=document.createElement('div');panel.id='gidFit';fit.insertBefore(panel,fit.firstChild);}
+      var bigs=[].slice.call(document.querySelectorAll('.gauge .big'));
+      var ctl=num(bigs[0]),atl=num(bigs[1]),tsb=num(bigs[2]);
+      if(!isFinite(tsb)&&isFinite(ctl)&&isFinite(atl))tsb=ctl-atl;
+      if(!(isFinite(ctl)&&isFinite(atl)&&ctl>0)){panel.innerHTML='<div class="gf-card"><div class="gf-k">Fitness</div><div class="gf-hint">Connect Strava to see your fitness, form and race projection.</div></div>';fit.classList.add('gidon');return;}
+      var acwr=atl/ctl, fr=fresh(tsb);
+      var tl=chart('trendLine'),ctlS=[],dc;if(tl){dc=tl.data.datasets.filter(function(d){return /CTL/i.test(d.label);})[0];if(dc)ctlS=dc.data.slice();}
+      var wk=chart('trend'),weekly=[];if(wk&&wk.data.datasets[0])weekly=wk.data.datasets[0].data.slice();
+      var lastWk=weekly.length?weekly[weekly.length-1]:null;
+      var peak=ctlS.length?Math.max.apply(null,ctlS):ctl;
+      var maxWk=weekly.length?Math.max.apply(null,weekly):null;
+      var race=null;try{var rs=JSON.parse(localStorage.getItem('app_races')||'[]');if(rs&&rs.length)race=rs[0];}catch(e){}
+      var weeks=null,proj=null,bd=null;
+      if(race&&race.date){var dd=new Date(race.date+'T00:00:00'),nw=new Date();nw.setHours(0,0,0,0);weeks=Math.max(0,Math.round((dd-nw)/6048e5));}
+      if(lastWk!=null)proj=Math.round(lastWk/7);
+      if(race)bd=band(race.name||race.meta);
+      var rdy=null;try{rdy=JSON.parse(localStorage.getItem('gid_readiness')||'null');}catch(e){}
+      var ckK=Object.keys(localStorage).filter(function(k){return k.indexOf('app_checkin_')===0;}).sort();
+      var lastCk=null;if(ckK.length){try{lastCk=JSON.parse(localStorage.getItem(ckK[ckK.length-1]));}catch(e){}}
+      var hist=[];try{hist=JSON.parse(localStorage.getItem('gid_rdyhist')||'[]');}catch(e){}
+      var tdy=new Date().toISOString().slice(0,10);
+      if(rdy&&rdy.score!=null){if(!hist.length||hist[hist.length-1].d!==tdy)hist.push({d:tdy,s:Math.round(rdy.score)});else hist[hist.length-1].s=Math.round(rdy.score);hist=hist.slice(-14);try{localStorage.setItem('gid_rdyhist',JSON.stringify(hist));}catch(e){}}
+      var H='';
+      H+='<div class="gf-card"><div class="gf-k">Form & freshness</div><div class="gf-hero"><div class="gf-ring" style="border-color:'+tone(fr.t)+'"><div class="w" style="color:'+tone(fr.t)+'">'+E(fr.w)+'</div></div><div><div style="font-size:15px;font-weight:700">'+E(fr.m)+'</div><div class="gf-hint">Form (TSB) '+(tsb>=0?'+':'')+Math.round(tsb)+' · '+(acwr>1.3?'<span class="gf-bad">load ratio '+acwr.toFixed(2)+' — ramping fast</span>':'<span class="gf-mut">load ratio '+acwr.toFixed(2)+' — healthy</span>')+'</div></div></div><div class="gf-trio"><div class="gf-tile"><div class="b">'+Math.round(ctl)+'</div><div class="c">Fitness · CTL</div></div><div class="gf-tile"><div class="b">'+Math.round(atl)+'</div><div class="c">Fatigue · ATL</div></div><div class="gf-tile"><div class="b" style="color:'+tone(fr.t)+'">'+(tsb>=0?'+':'')+Math.round(tsb)+'</div><div class="c">Form · TSB</div></div></div></div>';
+      if(race&&bd){
+        var cur=Math.round(ctl),tgt=bd.mid,pj=proj!=null?proj:cur,gap=tgt-pj;
+        var stt=gap<=2?{w:'On track',t:'good'}:(gap<=12?{w:'Slightly behind',t:'warn'}:{w:'Building needed',t:'bad'});
+        var pct=Math.max(4,Math.min(100,Math.round(cur/bd.hi*100))),tp=Math.max(4,Math.min(100,Math.round(tgt/bd.hi*100)));
+        var pctUp=Math.round((tgt/Math.max(1,pj)-1)*100);
+        H+='<div class="gf-card"><div class="gf-k">Fitness for '+E(race.name||'your race')+'</div><div class="gf-row"><span class="l">'+(weeks!=null?weeks+' weeks to go':'')+'</span><span class="gf-pill" style="background:'+tone(stt.t)+'22;color:'+tone(stt.t)+'">'+stt.w+'</span></div><div class="gf-bar"><i style="width:'+pct+'%;background:'+tone(fr.t)+'"></i><span style="position:absolute;top:-3px;left:'+tp+'%;width:2px;height:16px;background:var(--ink)"></span></div><div class="gf-row"><span class="l">Fitness now</span><span class="v">CTL '+cur+'</span></div><div class="gf-row"><span class="l">Projected at current load</span><span class="v">~'+pj+'</span></div><div class="gf-row"><span class="l">Target band ('+bd.lbl+')</span><span class="v">'+bd.lo+'–'+bd.hi+'</span></div><div class="gf-hint">'+(gap>2?('Raise weekly load ~'+pctUp+'% and build steadily (+3–5 CTL/wk is safe).'+(weeks!=null?' Achievable in your '+weeks+' weeks.':'')):'Hold and sharpen — you are in the target zone.')+' Guide only.</div></div>';
+      }
+      H+='<div class="gf-card"><div class="gf-k">Performance</div><div class="gf-row"><span class="l">Peak fitness (8 wks)</span><span class="v">CTL '+Math.round(peak)+'</span></div><div class="gf-row"><span class="l">Now vs peak</span><span class="v">'+(peak>0?Math.round((ctl/peak-1)*100):0)+'%</span></div>'+(maxWk!=null?'<div class="gf-row"><span class="l">Biggest week</span><span class="v">'+Math.round(maxWk)+' load</span></div>':'')+(lastWk!=null?'<div class="gf-row"><span class="l">This week</span><span class="v">'+Math.round(lastWk)+' load</span></div>':'')+'</div>';
+      var rb=rdy&&rdy.band?rdy.band:'',rt=rb==='green'?'good':rb==='amber'?'warn':rb==='red'?'bad':'mut';
+      var sv=hist.map(function(h){return h.s;}),sm=sv.length?Math.max.apply(null,sv):100;
+      var sp=hist.map(function(h){return '<i style="height:'+Math.max(6,Math.round(h.s/(sm||100)*38))+'px"></i>';}).join('');
+      H+='<div class="gf-card"><div class="gf-k">Recovery</div>'+(rdy&&rdy.score!=null?'<div class="gf-row"><span class="l">Readiness</span><span class="v" style="color:'+tone(rt)+'">'+Math.round(rdy.score)+' · '+E(rb)+'</span></div>':'')+'<div class="gf-row"><span class="l">Load ratio (ACWR)</span><span class="v '+(acwr>1.3?'gf-bad':'gf-mut')+'">'+acwr.toFixed(2)+'</span></div>'+(lastCk?'<div class="gf-row"><span class="l">Last check-in</span><span class="v">sleep '+ck(lastCk.sleep)+' · legs '+ck(lastCk.legs)+'</span></div>':'')+(hist.length>1?'<div class="gf-spark">'+sp+'</div><div class="gf-hint">Readiness, last '+hist.length+' days</div>':'<div class="gf-hint">Check in daily and your recovery trend builds here.</div>')+'</div>';
+      var bal=chart('balance');
+      if(bal){var lb=bal.data.labels||[],da=(bal.data.datasets[0]||{}).data||[],tt=da.reduce(function(a,b){return a+(+b||0);},0)||1;
+        if(lb.length){var col={run:'var(--run)',ride:'var(--ride)',bike:'var(--ride)',swim:'var(--swim)'};
+          var rows=lb.map(function(l,i){var k=(''+l).toLowerCase(),c=col[k]||'var(--peacock)',p=Math.round((da[i]||0)/tt*100);return '<div class="gf-row"><span class="l">'+E(l)+'</span><span class="v">'+p+'%</span></div><div class="gf-bar"><i style="width:'+p+'%;background:'+c+'"></i></div>';}).join('');
+          H+='<div class="gf-card"><div class="gf-k">Discipline balance (28 days)</div>'+rows+'</div>';}}
+      var sig=[Math.round(ctl),Math.round(atl),Math.round(tsb),weeks,hist.length].join('|');
+      if(panel.getAttribute('data-sig')!==sig){panel.innerHTML=H;panel.setAttribute('data-sig',sig);}
+      fit.classList.add('gidon');
+      var scopes=document.querySelectorAll('#gv-today [id*="state"],#gv-today [class*="state"],#gv-today [id*="form"],#gv-today [id*="readi"]');
+      var words=['very fatigued','very fresh','fatigued','fresh','neutral','tired','rested','optimal'];
+      [].slice.call(scopes).forEach(function(sc){var wl=document.createTreeWalker(sc,NodeFilter.SHOW_TEXT,null),n;while((n=wl.nextNode())){var raw=n.nodeValue,low=raw.toLowerCase(),hit=null,ix;for(var i=0;i<words.length;i++){if(low.indexOf(words[i])>-1){hit=words[i];break;}}if(hit){ix=low.indexOf(hit);var rep=raw.slice(0,ix)+fr.w+raw.slice(ix+hit.length);if(rep!==raw)n.nodeValue=rep;}}});
+    }catch(e){ fit.classList.remove('gidon'); }
+  }
+  var st=document.getElementById('gidFitCss');if(!st){st=document.createElement('style');st.id='gidFitCss';st.textContent=CSS;document.head.appendChild(st);}
+  setInterval(draw,1500);setTimeout(draw,400);setTimeout(draw,1200);
+})();
+
