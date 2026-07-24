@@ -206,6 +206,12 @@
     #gidInstall .gi-btns{display:flex;gap:8px;justify-content:flex-end;align-items:center;}
     #gidInstall .gi-go{background:var(--peacock);color:#06121b;border:none;border-radius:9px;padding:9px 16px;font-weight:800;font-size:13px;cursor:pointer;}
     #gidInstall .gi-x{background:#0e151d;color:var(--mut);border:1px solid var(--line);border-radius:9px;padding:9px 14px;font-size:13px;cursor:pointer;}
+    /* hide FTP (and its stat) for non-cyclists — CSS survives base-app re-renders */
+    body.gid-nocycle .metric:has(#pf_ftp){display:none !important;}
+    body.gid-nocycle [data-metric="wkg"], body.gid-nocycle .wkg{display:none !important;}
+    /* today's fuel */
+    .gf-line{font-size:14px;color:var(--ink);padding:2px 0 8px;line-height:1.45;}
+    .gf-target{margin-top:6px;font-size:12px;color:var(--peacock);font-weight:700;letter-spacing:.2px;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -257,12 +263,16 @@
           if (k && nm.indexOf(k) > -1) return false;
         }
         // colour ownership: if "my colours" chosen, only those calendar colours count as mine
+        // recognise real sessions even when named with a brand/shorthand (FIVE45, CCP, WCW, spin, Zwift…)
+        var SPORT = /(\brun\b|\bride\b|\bbike\b|cycl|\bspin\b|five45|\bccp\b|\bwcw\b|brick|turbo|zwift|peloton|watt ?bike|\bswim\b|\bgym\b|\blift\b|strength|\brow\b|yoga|pilates|hiit|interval|tempo|threshold|vo2|\bz[2-5]\b|\bftp\b|\btrack\b|\btri\b|session|workout|training|\d+\s?k(m|\b)|\bmile)/i;
+        var isSporty = SPORT.test(nm) || orig(e);
         var show = p.showColors || [];
         if (show.length) {
           var c = (e && e.colorId != null) ? String(e.colorId) : '';
-          if (show.indexOf(c) === -1) return false;
+          if (show.indexOf(c) === -1) return false;   // not one of the user's training colours → not theirs
+          return isSporty;                             // their colour AND looks like a session
         }
-        return orig(e);
+        return isSporty;                               // no colour filter → detect by name
       };
       window.__gidFilterHook = true;
       return true;
@@ -375,6 +385,13 @@
             window.renderMeals = gidRenderMeals;
             window.generateMeals = gidGenerateMeals;
             gidRenderMeals();
+            // Today's Fuel — daily, workout-aware — at the top of the Fuel view
+            var fuelView = document.getElementById('gv-fuel');
+            if (fuelView && !document.getElementById('gidFuel')) {
+              var fcard = document.createElement('div'); fcard.className = 'card'; fcard.id = 'gidFuel';
+              fuelView.insertBefore(fcard, fuelView.firstChild);
+              fuelEnsure(false);
+            }
             // profile: fill metrics, hide FTP for non-cyclists, run onboarding first time
             applyProfile();
             if (!getProfile().done) showOnboard();
@@ -665,7 +682,10 @@
       if (h && p.heightCm) { h.value = p.heightCm; fire(h); }
       if (w && p.weightKg) { w.value = p.weightKg; fire(w); }
       if (f && p.ftp) { f.value = p.ftp; fire(f); }
-      if (f) { var box = f.closest('.metric'); if (box) { var hideFtp = p.done && (p.sports || []).length > 0 && !isCyclist(); box.style.display = hideFtp ? 'none' : ''; } }
+      // non-cyclist → hide FTP. Body class + CSS :has() survives the base app's metric re-renders.
+      var noCycle = p.done && (p.sports || []).length > 0 && !isCyclist();
+      document.body.classList.toggle('gid-nocycle', noCycle);
+      if (f) { var box = f.closest('.metric'); if (box) box.style.display = noCycle ? 'none' : ''; }
     } catch (e) {}
   }
 
@@ -860,6 +880,63 @@
       .catch(function () {});
   }
 
+  /* ---------------- Today's Fuel — daily, workout-aware nutrition ---------------- */
+  function fuelDayKey() { var d = new Date(Date.now() - 3 * 3600 * 1000); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function fuelDoneSnip() { var d = document.getElementById('todayDone'); return d ? (d.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120) : ''; }
+  function fuelContext() {
+    function grab(sel, n) { return Array.prototype.slice.call(document.querySelectorAll(sel)).map(function (e) { return (e.textContent || '').trim().replace(/\s+/g, ' '); }).slice(0, n); }
+    var g = grab('.gauge .big', 3), caps = grab('.gauge .cap', 3);
+    var plan = ''; try { var pl = JSON.parse(localStorage.getItem('gid_plan') || 'null'); plan = pl && pl.sessions ? pl.sessions.join('; ') : ''; } catch (e) {}
+    return {
+      profile: getProfile(),
+      completed_today: fuelDoneSnip() || 'nothing logged yet today',
+      today_plan: plan,
+      fitness_fatigue_form: g.map(function (v, i) { return (caps[i] || '') + ': ' + v; }),
+      weekday: new Date().toLocaleDateString('en-GB', { weekday: 'long' })
+    };
+  }
+  function fuelGet() { try { return JSON.parse(localStorage.getItem('gid_fuel') || 'null'); } catch (e) { return null; } }
+  function fuelSet(f) { try { localStorage.setItem('gid_fuel', JSON.stringify(f)); } catch (e) {} }
+  function fuelRender(f) {
+    var el = document.getElementById('gidFuel'); if (!el) return;
+    el.innerHTML = '<div class="gw-h"><span>Today\'s Fuel · adapts to your training</span><button class="wx-refresh" id="gidFuelR" title="Re-tune to today">↻</button></div>'
+      + (f.note ? '<div class="gw-note" style="margin-bottom:12px">' + esc(f.note) + '</div>' : '')
+      + '<div class="gvmeal"><label>🌅 Breakfast</label><div class="gf-line">' + esc(f.b || '—') + '</div>'
+      + '<label>☀️ Lunch</label><div class="gf-line">' + esc(f.l || '—') + '</div>'
+      + '<label>🌙 Dinner</label><div class="gf-line">' + esc(f.d || '—') + '</div>'
+      + (f.kcal ? '<div class="gf-target">≈ ' + esc(f.kcal) + (f.carbs ? ' · ' + esc(f.carbs) : '') + '</div>' : '') + '</div>';
+    var r = document.getElementById('gidFuelR'); if (r) r.addEventListener('click', function () { fuelEnsure(true); });
+  }
+  function fuelEnsure(force) {
+    var el = document.getElementById('gidFuel'); if (!el) return;
+    var key = fuelDayKey(), snip = fuelDoneSnip(), f = fuelGet();
+    // re-use cached fuel only if it's for today AND the day's logged training hasn't changed since
+    if (!force && f && f.date === key && f.b && f.doneSnip === snip) { fuelRender(f); return; }
+    el.innerHTML = '<div class="gw-h"><span>Today\'s Fuel · adapts to your training</span></div><div class="gw-loading"><span class="gv-dots"><span></span><span></span><span></span></span> tuning today\'s nutrition to your training…</div>';
+    var p = getProfile();
+    var bmi = (p.heightCm && p.weightKg) ? (p.weightKg / Math.pow(p.heightCm / 100, 2)).toFixed(1) : '?';
+    var prompt = "Design TODAY's nutrition for this endurance athlete, tuned to what they've ACTUALLY trained today. "
+      + "Read 'completed_today' and 'today_plan' in the context: a hard/long session (long ride/run, high load) → higher calories, CARB-loaded around the session; an easy/short day → moderate; a REST day → lower carbs, protein-forward, slightly fewer calories. "
+      + "Respect dietary restrictions strictly: '" + (p.diet || 'none') + "'. "
+      + "Athlete: sports " + ((p.sports || []).join(', ') || 'general') + ", " + (p.sex || '?') + ", " + (p.age || '?') + "y, " + (p.heightCm || '?') + "cm, " + (p.weightKg || '?') + "kg, BMI " + bmi + ", goal " + (p.goal || '?') + ". "
+      + "Output EXACTLY 5 lines and nothing else:\nNOTE: <one short sentence on why today's fuel looks like this, referencing today's training>\nB: <breakfast>\nL: <lunch>\nD: <dinner>\nTARGET: <approx daily kcal> | <carb emphasis, e.g. high-carb ~6-8g/kg>";
+    fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: fuelContext(), history: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var t = d.reply || '';
+        function pick(re) { var m = t.match(re); return m ? m[1].trim() : ''; }
+        var f2 = { date: key, doneSnip: snip, note: pick(/NOTE:\s*(.+)/i), b: pick(/(?:^|\n)\s*B:\s*(.+)/i), l: pick(/(?:^|\n)\s*L:\s*(.+)/i), d: pick(/(?:^|\n)\s*D:\s*(.+)/i), kcal: '', carbs: '' };
+        var tg = t.match(/TARGET:\s*(.+)/i);
+        if (tg) { var parts = tg[1].split('|'); f2.kcal = (parts[0] || '').trim(); f2.carbs = (parts[1] || '').trim(); }
+        if (!f2.b && !f2.l && !f2.d) { f2.note = f2.note || t.slice(0, 160); }
+        fuelSet(f2); fuelRender(f2);
+      })
+      .catch(function () {
+        el.innerHTML = '<div class="gw-h"><span>Today\'s Fuel</span><button class="wx-refresh" id="gidFuelR">↻</button></div><div class="gw-note warn">Could not build today\'s fuel — tap ↻ to retry.</div>';
+        var r = document.getElementById('gidFuelR'); if (r) r.addEventListener('click', function () { fuelEnsure(true); });
+      });
+  }
+
   /* ---------------- small polish: stale copy + connect-Strava nudge ---------------- */
   function gidPolish() {
     try {
@@ -962,6 +1039,7 @@
     if (document.hidden) return;
     try { gidEnsureWeather(false); } catch (e) {}
     try { if (document.getElementById('gidPlan')) gidEnsurePlan(false); } catch (e) {}
+    try { if (document.getElementById('gidFuel')) fuelEnsure(false); } catch (e) {}
   });
 
   /* ---------------- refresh: header button + pull-to-refresh (standalone PWA) ---------------- */
