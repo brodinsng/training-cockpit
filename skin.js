@@ -1476,3 +1476,79 @@
   var st=document.getElementById('gidFitCss');if(!st){st=document.createElement('style');st.id='gidFitCss';st.textContent=CSS;document.head.appendChild(st);}
   setInterval(function(){draw();janitor();},1500);setTimeout(function(){draw();janitor();},400);setTimeout(function(){draw();janitor();},1200);
 })();
+
+;(function(){
+  var NL=String.fromCharCode(10);
+  function E(s){s=(s==null?'':''+s);return s.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');}
+  function two(n){return (n<10?'0':'')+n;}
+  function tstr(){var d=new Date();return d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate());}
+  function pf(el){return el?parseFloat((el.textContent||'').replace(/[^0-9.-]/g,'')):NaN;}
+  function gauges(){var b=[].slice.call(document.querySelectorAll('.gauge .big'));return {ctl:pf(b[0]),atl:pf(b[1]),tsb:pf(b[2])};}
+  function lastCk(){var ks=Object.keys(localStorage).filter(function(k){return k.indexOf('app_checkin_')===0;}).sort();if(!ks.length)return null;var v=null;try{v=JSON.parse(localStorage.getItem(ks[ks.length-1]));}catch(e){return null;}if(!v)return null;var parts=[v.legs,v.sleep,v.sore].filter(function(x){return typeof x==='number';});if(!parts.length)return null;return {avg:parts.reduce(function(a,b){return a+b;},0)/parts.length,v:v};}
+  function week(){try{var w=JSON.parse(localStorage.getItem('gid_week')||'null');return w&&w.sessions?w:null;}catch(e){return null;}}
+  var ACTS=null,ATS=0,BUSY=false,MSG='';
+  function loadActs(){if(ACTS&&Date.now()-ATS<300000)return;ATS=Date.now();fetch('/api/u/activities',{credentials:'include'}).then(function(r){return r.json();}).then(function(j){var a=Array.isArray(j)?j:(j.activities||[]);ACTS=a.map(function(x){return {d:(''+(x.start_local||'')).slice(0,10),min:Math.round((((x.summary||{}).moving_time)||0)/60)};});}).catch(function(){ACTS=[];});}
+  function isRest(x){return x.rest||(''+x.sport).toLowerCase()==='rest';}
+  function analyse(){var w=week();if(!w)return null;var s=w.sessions,t=tstr(),done=0,missed=0,fut=0,misses=[],future=[];
+    s.forEach(function(x){
+      if(x.date<t){ if(isRest(x))return; var hit=ACTS&&ACTS.some(function(a){return a.d===x.date&&a.min>0;}); if(hit)done++;else{missed++;misses.push(x);} }
+      else if(x.date===t){ if(isRest(x))return; var h2=ACTS&&ACTS.some(function(a){return a.d===t&&a.min>0;}); if(h2)done++; }
+      else { if(!isRest(x))fut++; future.push(x); }
+    });
+    var maxd=s.length?s[s.length-1].date:'';
+    return {w:w,s:s,done:done,missed:missed,fut:fut,misses:misses,future:future,t:t,active:maxd>=t};
+  }
+  function render(){
+    var sc=document.getElementById('gv-schedule'); if(!sc) return; loadActs();
+    var card=document.getElementById('gidAdapt'), anchor=document.getElementById('gidWeek');
+    if(!card){card=document.createElement('div');card.id='gidAdapt';card.className='gf-card';if(anchor&&anchor.parentNode)anchor.parentNode.insertBefore(card,anchor.nextSibling);else sc.insertBefore(card,sc.firstChild);
+      card.addEventListener('click',function(ev){var el=ev.target.closest('[data-act]');if(!el)return;if(el.getAttribute('data-act')==='rebal')rebalance();});}
+    if(BUSY)return;
+    var a=analyse();
+    if(!a||!a.active){card.style.display='none';return;} card.style.display='';
+    var g=gauges(),ck=lastCk();var acwr=(g.ctl>0)?g.atl/g.ctl:null;var subjLow=ck&&ck.avg<=2.5;
+    var futN=a.future.filter(function(x){return !isRest(x);}).length;
+    var need=(a.missed>0||subjLow||(acwr&&acwr>1.3))&&futN>0;
+    var reasons=[];if(a.missed>0)reasons.push(a.missed+' missed');if(subjLow)reasons.push('under-recovered');if(acwr&&acwr>1.3)reasons.push('load ramping');
+    var tag=need?'<span class="gf-tag" style="color:var(--warn)">Rebalance suggested</span>':'<span class="gf-tag" style="color:var(--good)">On track</span>';
+    var H='<div class="gf-k">This week'+tag+'</div><div class="gf-sub" style="margin-top:0">'+a.done+' done · '+a.missed+' missed · '+a.fut+' to go'+(reasons.length?' — '+E(reasons.join(', ')):'')+'.</div>';
+    var rem=a.future.slice(0,7).map(function(x){return '<div class="gf-row"><span class="l">'+E(x.dow||x.date.slice(5))+'</span><span class="v">'+(isRest(x)?'Rest':(E(x.sport)+' · '+x.durationMin+'m · '+E(x.focus)))+'</span></div>';}).join('');
+    if(rem)H+='<div style="margin-top:8px">'+rem+'</div>';
+    if(need)H+='<div style="margin-top:12px"><button class="gf-btn" data-act="rebal">Rebalance remaining days</button></div>';
+    if(MSG)H+='<div class="gf-sub" style="margin-top:12px">'+E(MSG)+'</div>';
+    var sig=[a.done,a.missed,a.fut,subjLow,MSG,a.future.map(function(x){return x.sport+x.durationMin+x.focus;}).join(',')].join('|');
+    if(card.getAttribute('data-sig')!==sig){card.innerHTML=H;card.setAttribute('data-sig',sig);}
+  }
+  function rebalance(){
+    if(BUSY)return;var a=analyse();if(!a)return;var g=gauges(),ck=lastCk();
+    BUSY=true;MSG='';var card=document.getElementById('gidAdapt');
+    if(card){card.removeAttribute('data-sig');card.innerHTML='<div class="gf-k">Rebalancing</div><div class="gf-sub">Rebuilding your remaining days around what you have done and how you are recovering.</div>';}
+    var acwr=(g.ctl>0)?(g.atl/g.ctl).toFixed(2):'unknown';var subjLow=ck&&ck.avg<=2.5;
+    var future=a.future,fset={};future.forEach(function(x){fset[x.date]=1;});
+    var race=null;try{var rs=JSON.parse(localStorage.getItem('app_races')||'[]');if(rs.length)race=rs[0];}catch(e){}
+    var weeks=null;if(race&&race.date){weeks=Math.round((new Date(race.date+'T00:00:00')-new Date(a.t+'T00:00:00'))/6048e5);}
+    var prof=null;try{prof=JSON.parse(localStorage.getItem('app_profile')||localStorage.getItem('gid_profile')||'null');}catch(e){}
+    var sports=prof&&prof.sports?(Array.isArray(prof.sports)?prof.sports.join(", "):prof.sports):'';
+    var m="You are my endurance coach. Rebuild ONLY the remaining days of my current training week. ";
+    m+="Today is "+a.t+". My form (TSB) is "+Math.round(g.tsb)+", fitness (CTL) "+Math.round(g.ctl)+", acute-to-chronic load ratio "+acwr+". ";
+    if(ck)m+="Latest check-in on a 1 to 5 scale: legs "+ck.v.legs+", sleep "+ck.v.sleep+", soreness "+ck.v.sore+". ";
+    if(subjLow)m+="I am under-recovered right now. ";
+    if(a.missed>0)m+="I MISSED these sessions this week: "+a.misses.map(function(x){return x.dow+" "+x.sport+" "+x.durationMin+"min "+x.focus;}).join("; ")+". ";
+    m+="Remaining planned days: "+future.map(function(x){return x.date+" "+x.dow+" "+x.sport+" "+x.durationMin+"min "+x.focus;}).join("; ")+". ";
+    if(weeks!=null)m+="My A-race is in "+weeks+" weeks. ";
+    m+="RULES: do not cram missed volume into the remaining days; protect the single most important long or quality session; if I am under-recovered or the load ratio is above 1.3, make the next one or two days easy or rest; keep it polarised, mostly easy with at most one or two hard days and never hard on back to back days; ";
+    if(sports)m+="only use these sports: "+sports+"; ";
+    m+="if the race is within 2 weeks, taper. ";
+    m+='OUTPUT FORMAT: first line "WHY: one short sentence". Then exactly one line for each remaining day in order, each line exactly "DATE | SPORT | MINUTES | short focus" where DATE is YYYY-MM-DD and rest days use SPORT Rest and MINUTES 0. No other text and no markdown.';
+    fetch('/api/u/ai',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(j){
+      var reply=(j&&j.reply)||'';var lines=reply.split(NL).map(function(s){return s.trim();}).filter(function(s){return s;});
+      var why='',out=[];
+      lines.forEach(function(l){if(l.slice(0,4).toUpperCase()==='WHY:'){why=l.slice(4).trim();return;}var parts=l.split('|').map(function(x){return x.trim();});if(parts.length>=4){var dt=parts[0];if(dt.length===10&&dt.charAt(4)==='-'&&dt.charAt(7)==='-'){out.push({date:dt,sport:parts[1],min:parseInt(parts[2],10)||0,focus:parts[3]});}}});
+      var applied=0;if(out.length){var w=a.w;out.forEach(function(n){if(!fset[n.date])return;var r2=(''+n.sport).toLowerCase().indexOf('rest')>-1||n.min===0;for(var i=0;i<w.sessions.length;i++){if(w.sessions[i].date===n.date){w.sessions[i].sport=n.sport;w.sessions[i].durationMin=n.min;w.sessions[i].focus=n.focus;w.sessions[i].rest=r2;applied++;break;}}});
+        try{localStorage.setItem('gid_week',JSON.stringify(w));}catch(e){}}
+      MSG=applied?((why?why+' ':'')+'Updated '+applied+' day'+(applied>1?'s':'')+'. Tap Add to calendar above to sync.'):'Could not read a new plan. Please try again.';
+      BUSY=false;var c2=document.getElementById('gidAdapt');if(c2)c2.removeAttribute('data-sig');render();
+    }).catch(function(){MSG='Rebalance failed. Check your connection and retry.';BUSY=false;var c3=document.getElementById('gidAdapt');if(c3)c3.removeAttribute('data-sig');render();});
+  }
+  setInterval(render,1600);setTimeout(render,900);
+})();
