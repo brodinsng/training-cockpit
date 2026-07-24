@@ -1552,3 +1552,17 @@
   }
   setInterval(render,1600);setTimeout(render,900);
 })();
+
+;(function(){
+  var S={};[0x25ce,0x1f4c8,0x1f5d3,0x1f37d,0x1f4c5,0x1f3af,0x2728,0x2726,0x1f321,0x1f3c1,0x1f4c8,0x1f5d3].forEach(function(x){S[x]=1;});
+  window.gidEmojiClean=1;
+  function clean(){try{
+    var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null),n;
+    while((n=w.nextNode())){var p=n.parentElement;if(!p)continue;var tag=p.tagName;if(tag==='SCRIPT'||tag==='STYLE'||tag==='TEXTAREA'||tag==='INPUT')continue;
+      var t=n.nodeValue,has=false;
+      for(var k=0;k<t.length;k++){var cp=t.codePointAt(k);if(cp>0xFFFF)k++;if(S[cp]){has=true;break;}}
+      if(has){var out='';for(var j=0;j<t.length;j++){var c2=t.codePointAt(j);if(c2>0xFFFF)j++;if(!S[c2])out+=String.fromCodePoint(c2);}while(out.charAt(0)===' ')out=out.slice(1);n.nodeValue=out;}
+    }
+  }catch(e){}}
+  setInterval(clean,1500);setTimeout(clean,600);setTimeout(clean,1500);
+})();
