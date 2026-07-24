@@ -212,6 +212,18 @@
     /* today's fuel */
     .gf-line{font-size:14px;color:var(--ink);padding:2px 0 8px;line-height:1.45;}
     .gf-target{margin-top:6px;font-size:12px;color:var(--peacock);font-weight:700;letter-spacing:.2px;}
+    /* readiness score */
+    #gidReady{margin-bottom:14px;}
+    .gr-h{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--peacock);font-weight:800;margin-bottom:12px;}
+    .gr-wrap{display:flex;align-items:center;gap:16px;}
+    .gr-ring{width:82px;height:82px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;position:relative;background:conic-gradient(var(--c) calc(var(--p)*3.6deg), #1b2532 0);}
+    .gr-ring::before{content:'';position:absolute;inset:7px;border-radius:50%;background:var(--card);}
+    .gr-num{position:relative;font-size:28px;font-weight:800;color:var(--ink);line-height:1;}
+    .gr-body{flex:1;min-width:0;}
+    .gr-verdict{font-size:15px;font-weight:700;color:var(--ink);line-height:1.35;margin-bottom:4px;}
+    .gr-drivers{font-size:12px;color:var(--mut);}
+    .gr-risk{margin-top:10px;font-size:12px;line-height:1.5;padding:9px 11px;border-radius:10px;background:#10171f;border:1px solid var(--line);border-left:3px solid var(--warn) !important;color:var(--ink);}
+    .gr-loading{color:var(--mut);font-size:13px;}
   `;
   var st = document.createElement('style'); st.id = 'skin'; st.textContent = css; document.head.appendChild(st);
   var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute('content', '#0a0e13');
@@ -372,6 +384,12 @@
               var wc = document.createElement('div'); wc.className = 'card'; wc.id = 'gidWx';
               todayView.insertBefore(wc, todayView.firstChild);
               gidEnsureWeather(false);
+            }
+            // Readiness score at the VERY top of Today — the "should I train hard?" answer
+            if (todayView && !document.getElementById('gidReady')) {
+              var rc = document.createElement('div'); rc.className = 'card'; rc.id = 'gidReady';
+              todayView.insertBefore(rc, todayView.firstChild);
+              gidReadiness(); gidReadinessWatch();
             }
             // weekly plan → Google Calendar card at the top of the Schedule view
             var schedView = document.getElementById('gv-schedule');
@@ -620,6 +638,8 @@
       recent_7d: grab('#weekStats .sname, #weekStats .sval', 8),
       completed_today: done ? (done.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 300) : 'nothing logged yet today',
       daily_checkin: readi ? (readi.textContent || '').trim().slice(0, 160) : '',
+      readiness: (function () { try { var r = JSON.parse(localStorage.getItem('gid_readiness') || 'null'); return r ? { score: r.score, band: r.band, acute_chronic_ratio: r.acwr != null ? +r.acwr.toFixed(2) : null } : null; } catch (e) { return null; } })(),
+      weeks_to_race: (function () { var m = (document.body.textContent || '').match(/([\d.]+)\s*weeks to go/); return m ? parseFloat(m[1]) : null; })(),
       profile: getProfile(),
       weekday: new Date().toLocaleDateString('en-GB', { weekday: 'long' }),
       hide_keywords: getPrefs().hide || []
@@ -654,8 +674,10 @@
     if (!force && plan && plan.date === key && plan.sessions && plan.sessions.length) { gidRenderPlan(plan); return; }
     el.innerHTML = '<div class="gidplan-h"><span>Today\'s Plan · AI-tailored</span></div><div class="gidplan-loading"><span class="gv-dots"><span></span><span></span><span></span></span> building today\'s session…</div>';
     var prompt = "Create today's training plan for " + new Date().toLocaleDateString('en-GB', { weekday: 'long' }) +
-      ". CRITICAL RULES: (1) Read 'completed_today' — if the athlete has ALREADY trained today, do NOT prescribe more of what they've done; if they've already done substantial work (e.g. a ride AND a run, or a long/hard session), the answer is REST or gentle recovery only — never add more load on top of an overloaded day. " +
-      "(2) Respect 'daily_checkin' — amber/red readiness or poor sleep/soreness means easier or rest. (3) Tailor to the sports in 'profile' — never prescribe a sport they don't do. " +
+      ". CRITICAL RULES: (1) Read 'completed_today' — if the athlete has ALREADY trained today, do NOT prescribe more of what they've done; if they've already done substantial work (a ride AND a run, or a long/hard session), the answer is REST or gentle recovery only — never add load on top of an overloaded day. " +
+      "(2) Respect 'readiness' — band 'red' or score <50 → easy recovery or REST only; 'amber' → easy aerobic only, no intensity; 'green' → a quality/hard session is OK. Also honour 'daily_checkin' (poor sleep/soreness → easier). " +
+      "(3) POLARISED (80/20): most training is easy aerobic; reserve hard efforts for green-readiness days and NEVER put intensity on back-to-back days — avoid the moderate 'grey zone'. " +
+      "(4) If 'readiness.acute_chronic_ratio' > 1.3, the athlete is ramping too fast (injury risk) — bias toward easy/recovery. (5) If 'weeks_to_race' is 2 or less, TAPER: cut volume, keep a short sharp bit of intensity. (6) Tailor to the sports in 'profile' — never prescribe a sport they don't do. " +
       "Output ONLY session lines, each on its own line starting with '- ', format '- Sport Duration — focus'. If the right call is rest, output the single line '- Rest — you've trained enough today, recover.' No preamble, no other text.";
     fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: gidPlanContext(), history: [] }) })
       .then(function (r) { return r.json(); })
@@ -836,8 +858,9 @@
     var prompt = "Create a 7-day training plan starting today (" + today + ", Day 1). Use the athlete's profile and current fitness in the context. "
       + "RULES: (1) Respect 'daysPerWeek' in the profile — include Rest days so the number of training days matches it (if unknown, give ~1-2 rest days). "
       + "(2) Only prescribe sports the athlete actually does (profile.sports); never invent a sport they don't do. "
-      + "(3) Factor current fatigue/form — if fatigue is high or form negative, go easier; never stack two hard days back to back. "
-      + "(4) Progress sensibly toward their race if one is set; vary intensity across the week. "
+      + "(3) POLARISE the week (80/20): ~80% of sessions are EASY aerobic, only 1-2 genuinely HARD/quality sessions, and keep hard days apart (never back-to-back). Avoid a week full of moderate 'grey zone' efforts. Put focus words like 'easy Z2', 'endurance', 'recovery', 'threshold', 'intervals', 'long' so intensity is clear. "
+      + "(4) Factor current fatigue/form/readiness — if fatigue is high, form negative, or 'readiness' is amber/red, cut the hard sessions and add easy/recovery. If the acute:chronic load ratio is high (>1.3), keep the week easy (a deload). "
+      + "(5) TAPER: if 'weeks_to_race' is 2 or less, sharply reduce volume but keep one short session with race-pace intensity. Otherwise progress gently toward the race. "
       + "OUTPUT EXACTLY 7 lines, one per day in order (Day 1 = today). Each line EXACTLY: 'SPORT | HH:MM | MINUTES | short focus'. "
       + "SPORT is ONE word (Run, Ride, Swim, Strength, or Rest). 24h times, sensible (default early morning). Rest day: 'Rest | 00:00 | 0 | recovery'. No preamble, no numbering, no other text.";
     fetch('/api/u/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt, context: gidPlanContext(), history: [] }) })
@@ -880,6 +903,51 @@
       .catch(function () {});
   }
 
+  /* ---------------- Readiness Score (0–100) — form + acute:chronic load + how you feel ----------------
+     Grounded in: training-load monitoring (TSB/form), the acute:chronic workload ratio (ATL/CTL — a
+     high ratio + low subjective recovery raises overuse-injury risk), and daily subjective readiness.
+     It replaces scattered signals with one number and feeds the plan. */
+  function gidReadNums() {
+    var bigs = Array.prototype.slice.call(document.querySelectorAll('.gauge .big')).map(function (e) { return parseFloat((e.textContent || '').replace(/[^\-\d.]/g, '')); });
+    var ctl = bigs[0], atl = bigs[1], tsb = bigs[2];
+    var haveObj = isFinite(ctl) && isFinite(atl) && ctl > 0;
+    var acwr = haveObj ? (atl / ctl) : null;
+    if (!isFinite(tsb) && haveObj) tsb = ctl - atl;
+    var subj = null; var rd = document.getElementById('readi');
+    if (rd) { var m = (rd.textContent || '').match(/([0-5](?:\.\d)?)\s*\/\s*5/); if (m) subj = parseFloat(m[1]); }
+    return { ctl: ctl, atl: atl, tsb: isFinite(tsb) ? tsb : null, acwr: acwr, subj: subj, haveObj: haveObj };
+  }
+  function gidReadiness() {
+    var el = document.getElementById('gidReady'); if (!el) return;
+    var n = gidReadNums();
+    if (!n.haveObj && n.subj == null) { el.innerHTML = '<div class="gr-h">Readiness</div><div class="gr-loading">Connect Strava and log a quick check-in to get your daily readiness.</div>'; return; }
+    var fTsb = (n.tsb != null) ? Math.max(0, Math.min(1, (n.tsb + 20) / 40)) : 0.5;
+    var fAcwr = (n.acwr == null) ? 0.7 : (n.acwr <= 1.3 ? 1 : Math.max(0, 1 - (n.acwr - 1.3) / 0.5));
+    var fSubj = (n.subj == null) ? null : (n.subj / 5);
+    var score = (fSubj == null) ? Math.round(100 * (0.6 * fTsb + 0.4 * fAcwr)) : Math.round(100 * (0.35 * fTsb + 0.25 * fAcwr + 0.40 * fSubj));
+    score = Math.max(1, Math.min(100, score));
+    var band = score >= 75 ? 'green' : (score >= 50 ? 'amber' : 'red');
+    var col = band === 'green' ? 'var(--good)' : (band === 'amber' ? 'var(--warn)' : 'var(--bad)');
+    var verdict = band === 'green' ? 'Primed — green light for a key or hard session.' : (band === 'amber' ? 'Moderate — train, but keep most of it easy/aerobic.' : 'Back off — easy or rest; recovery will pay you back.');
+    var drivers = [];
+    if (n.tsb != null) drivers.push('Form ' + (n.tsb >= 0 ? '+' : '') + Math.round(n.tsb));
+    if (n.acwr != null) drivers.push('load ratio ' + n.acwr.toFixed(2));
+    drivers.push(n.subj != null ? 'you feel ' + n.subj + '/5' : 'log check-in to refine');
+    var risk = (n.acwr != null && n.acwr > 1.3) ? '<div class="gr-risk">⚠ Your load is ramping fast (acute:chronic ' + n.acwr.toFixed(2) + '). That plus low recovery is when overuse injuries spike — avoid stacking hard days this week.</div>' : '';
+    try { localStorage.setItem('gid_readiness', JSON.stringify({ score: score, band: band, acwr: n.acwr, tsb: n.tsb, ts: Date.now() })); } catch (e) {}
+    el.innerHTML = '<div class="gr-h">Readiness · today</div>'
+      + '<div class="gr-wrap"><div class="gr-ring" style="--p:' + score + ';--c:' + col + '"><div class="gr-num">' + score + '</div></div>'
+      + '<div class="gr-body"><div class="gr-verdict">' + verdict + '</div><div class="gr-drivers">' + drivers.join(' · ') + '</div></div></div>' + risk;
+  }
+  function gidReadinessWatch() {
+    var rd = document.getElementById('readi');
+    if (rd && !rd.__gidWatch && window.MutationObserver) {
+      rd.__gidWatch = true;
+      new MutationObserver(function () { gidReadiness(); }).observe(rd, { childList: true, subtree: true, characterData: true });
+    }
+    [600, 1600, 3200].forEach(function (t) { setTimeout(gidReadiness, t); });
+  }
+
   /* ---------------- Today's Fuel — daily, workout-aware nutrition ---------------- */
   function fuelDayKey() { var d = new Date(Date.now() - 3 * 3600 * 1000); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function fuelDoneSnip() { var d = document.getElementById('todayDone'); return d ? (d.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120) : ''; }
@@ -915,8 +983,8 @@
     el.innerHTML = '<div class="gw-h"><span>Today\'s Fuel · adapts to your training</span></div><div class="gw-loading"><span class="gv-dots"><span></span><span></span><span></span></span> tuning today\'s nutrition to your training…</div>';
     var p = getProfile();
     var bmi = (p.heightCm && p.weightKg) ? (p.weightKg / Math.pow(p.heightCm / 100, 2)).toFixed(1) : '?';
-    var prompt = "Design TODAY's nutrition for this endurance athlete, tuned to what they've ACTUALLY trained today. "
-      + "Read 'completed_today' and 'today_plan' in the context: a hard/long session (long ride/run, high load) → higher calories, CARB-loaded around the session; an easy/short day → moderate; a REST day → lower carbs, protein-forward, slightly fewer calories. "
+    var prompt = "Design TODAY's nutrition for this endurance athlete using the 'fuel for the work required' principle — match carbohydrate to the day's actual demand, don't over-carb an easy or rest day. "
+      + "Read 'completed_today' and 'today_plan' in the context: a hard/long session (long ride/run, high load) → higher calories, CARB-loaded around the session; if a hard/key session is still to come today, carb-load beforehand; an easy/short day → moderate carbs; a REST day → lower carbs, protein-forward (~1.8-2g/kg), slightly fewer calories to aid recovery. "
       + "Respect dietary restrictions strictly: '" + (p.diet || 'none') + "'. "
       + "Athlete: sports " + ((p.sports || []).join(', ') || 'general') + ", " + (p.sex || '?') + ", " + (p.age || '?') + "y, " + (p.heightCm || '?') + "cm, " + (p.weightKg || '?') + "kg, BMI " + bmi + ", goal " + (p.goal || '?') + ". "
       + "Output EXACTLY 5 lines and nothing else:\nNOTE: <one short sentence on why today's fuel looks like this, referencing today's training>\nB: <breakfast>\nL: <lunch>\nD: <dinner>\nTARGET: <approx daily kcal> | <carb emphasis, e.g. high-carb ~6-8g/kg>";
@@ -1038,6 +1106,7 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) return;
     try { gidEnsureWeather(false); } catch (e) {}
+    try { if (document.getElementById('gidReady')) gidReadiness(); } catch (e) {}
     try { if (document.getElementById('gidPlan')) gidEnsurePlan(false); } catch (e) {}
     try { if (document.getElementById('gidFuel')) fuelEnsure(false); } catch (e) {}
   });
