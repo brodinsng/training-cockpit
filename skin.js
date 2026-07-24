@@ -1566,3 +1566,32 @@
   }catch(e){}}
   setInterval(clean,1500);setTimeout(clean,600);setTimeout(clean,1500);
 })();
+
+;(function(){
+  var NAMES=['Today','Fitness','Schedule','Fuel','Coach'];
+  var ORDER=['gv-today','gv-fitness','gv-schedule','gv-fuel','gv-coach'];
+  function tabs(){var t=document.getElementById('skinTabs');return t?[].slice.call(t.querySelectorAll('button')):[];}
+  function curIdx(){var t=tabs();for(var i=0;i<t.length;i++){if((''+t[i].className).indexOf('on')>-1)return i;}for(var j=0;j<ORDER.length;j++){var v=document.getElementById(ORDER[j]);if(v&&getComputedStyle(v).display!=='none')return j;}return 0;}
+  function go(idx){var t=tabs();if(!t.length)return;if(idx<0)idx=0;if(idx>t.length-1)idx=t.length-1;if(t[idx]){t[idx].click();try{localStorage.setItem('gid_view',''+idx);}catch(e){}updateNav(idx);}}
+  function ensureNav(){var n=document.getElementById('gidNav');if(!n){n=document.createElement('div');n.id='gidNav';document.body.appendChild(n);n.addEventListener('click',function(ev){var d=ev.target.closest('[data-i]');if(d)go(parseInt(d.getAttribute('data-i'),10));});}return n;}
+  function updateNav(idx){if(idx==null)idx=curIdx();var n=ensureNav();var dots=NAMES.map(function(nm,i){return '<span class="gidn-dot'+(i===idx?' on':'')+'" data-i="'+i+'"></span>';}).join('');var html='<div class="gidn-name">'+NAMES[idx]+'</div><div class="gidn-dots">'+dots+'</div>';if(n.getAttribute('data-cur')!==(''+idx)){n.innerHTML=html;n.setAttribute('data-cur',''+idx);}}
+  var CSS='#gidNav{position:fixed;top:56px;left:0;right:0;height:36px;z-index:49;display:flex;align-items:center;justify-content:center;gap:12px;background:rgba(10,14,19,0.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}'
+    +'#gidNav .gidn-name{font-size:13px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink)}'
+    +'#gidNav .gidn-dots{display:flex;gap:7px}#gidNav .gidn-dot{width:7px;height:7px;border-radius:50%;background:var(--line);cursor:pointer}#gidNav .gidn-dot.on{background:var(--peacock)}'
+    +'#skinHeader{z-index:52 !important}'
+    +'body{padding-top:94px !important;padding-bottom:calc(96px + env(safe-area-inset-bottom)) !important}'
+    +'#skinTabs{padding-top:9px !important;padding-bottom:calc(9px + env(safe-area-inset-bottom)) !important;height:auto !important}'
+    +'#skinTabs button{font-size:13px !important;font-weight:700 !important;opacity:.55}'
+    +'#skinTabs button.on{opacity:1 !important;color:var(--peacock) !important}';
+  var st=document.getElementById('gidNavCss');if(!st){st=document.createElement('style');st.id='gidNavCss';st.textContent=CSS;document.head.appendChild(st);}
+  var x0=null,y0=null,t0=0,multi=false,bad=false;
+  function noSwipe(el){var d=0;while(el&&el!==document.body&&d<40){d++;var tag=el.tagName;if(tag==='CANVAS'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return true;if(el.getAttribute&&el.getAttribute('data-noswipe')!=null)return true;try{var ov=getComputedStyle(el).overflowX;if((ov==='auto'||ov==='scroll')&&el.scrollWidth>el.clientWidth+8)return true;}catch(e){}el=el.parentElement;}return false;}
+  document.addEventListener('touchstart',function(e){if(e.touches.length>1){multi=true;return;}multi=false;var t=e.touches[0];x0=t.clientX;y0=t.clientY;t0=Date.now();bad=noSwipe(e.target);},{passive:true});
+  document.addEventListener('touchend',function(e){if(multi||x0==null||bad){x0=null;return;}var t=e.changedTouches[0];var dx=t.clientX-x0,dy=t.clientY-y0,dt=Date.now()-t0;x0=null;if(dt>800)return;if(Math.abs(dx)<60)return;if(Math.abs(dx)<Math.abs(dy)*1.7)return;var i=curIdx();if(dx<0)go(i+1);else go(i-1);},{passive:true});
+  function watch(){var tb=document.getElementById('skinTabs');if(tb&&!tb.__gw){tb.__gw=1;try{new MutationObserver(function(){updateNav();}).observe(tb,{attributes:true,subtree:true,attributeFilter:['class']});}catch(e){}}}
+  var restored=false;
+  function restore(){if(restored)return;restored=true;var v=null;try{v=localStorage.getItem('gid_view');}catch(e){}if(v!=null){var i=parseInt(v,10);if(i>=0&&i!==curIdx())go(i);}updateNav();}
+  document.addEventListener('click',function(e){var b=e.target.closest?e.target.closest('#skinTabs button'):null;if(b){setTimeout(function(){try{localStorage.setItem('gid_view',''+curIdx());}catch(e){}updateNav();},60);}},true);
+  function tick(){ensureNav();watch();updateNav();}
+  setInterval(tick,1500);setTimeout(function(){tick();restore();},700);setTimeout(restore,1700);
+})();
