@@ -2,7 +2,7 @@
 // Strategy: NETWORK-FIRST for the app shell so the phone always gets the latest
 // version when online (falling back to cache only when offline). API calls always
 // go straight to the network and are never cached. Bump CACHE to force a refresh.
-const CACHE = 'cockpit-v2';
+const CACHE = 'cockpit-v3';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
