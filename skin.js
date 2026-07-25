@@ -1639,3 +1639,69 @@
   }
   setInterval(render,2000); setTimeout(render,600); setTimeout(render,1800);
 })();
+
+/* ---- race persistence backup (respects deletes) ---- */
+;(function(){
+  function g(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function sync(){ var raw=g('app_races'); if(raw!==null){ try{ if(Array.isArray(JSON.parse(raw))) localStorage.setItem('gid_races_bak', raw); }catch(e){} } else { var bak=g('gid_races_bak'); if(bak){ try{ if(Array.isArray(JSON.parse(bak))) localStorage.setItem('app_races', bak); }catch(e){} } } }
+  sync(); setInterval(sync, 3000);
+})();
+/* ---- check-in impact: turns ratings into a session + fuel call ---- */
+;(function(){
+  function todayKey(){ var d=new Date(); return 'app_checkin_'+d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function ck(){ try{ return JSON.parse(localStorage.getItem(todayKey())||'null'); }catch(e){ return null; } }
+  function tone(t){ return t==='good'?'var(--good)':t==='warn'?'var(--warn)':t==='bad'?'var(--bad)':'var(--mut)'; }
+  function render(){
+    var host=document.getElementById('gv-today'); if(!host) return;
+    var anchor=document.getElementById('checkin'); if(!anchor) return;
+    var card=document.getElementById('gidCkImpact');
+    if(!card){ card=document.createElement('div'); card.id='gidCkImpact'; card.className='gf-card'; card.style.margin='12px 0 0'; if(anchor.parentNode) anchor.parentNode.insertBefore(card, anchor.nextSibling); card.addEventListener('click', function(ev){ var b=ev.target.closest?ev.target.closest('[data-ck]'):null; if(b){ var pr=document.getElementById('gidPlanRefresh'); if(pr) pr.click(); b.textContent='Rebuilding today...'; b.disabled=true; } }); }
+    var v=ck();
+    var H='<div class="gf-k">Your read for today</div>';
+    if(!v || v.legs==null){ H+='<div class="gf-sub" style="margin-top:0">Rate how you feel above — it sets your session and fuel for today.</div>'; }
+    else {
+      var rec=(v.legs + v.sleep + (6-v.sore) + (v.mot||3))/4;
+      var s; if(rec<=2.4) s={t:'bad',h:'Recover today',b:'Legs and sleep are low. Swap any hard work for easy aerobic, or rest outright — pushing now costs you the week. Fuel: protein-forward, moderate carbs.'};
+      else if(rec<=3.4) s={t:'warn',h:'Keep it steady',b:'You are OK, not fresh. Mostly easy today; a short quality effort only if it feels good once warmed up. Normal fuel.'};
+      else s={t:'good',h:'Green light',b:'You are recovered — make today the key or quality session. Fuel the work: carbs up before and during.'};
+      H+='<div class="gf-state" style="font-size:20px;color:'+tone(s.t)+'">'+s.h+'</div><div class="gf-sub">'+s.b+'</div>';
+      H+='<div class="gf-sub" style="margin-top:6px">From your ratings: legs '+v.legs+'/5, sleep '+v.sleep+'/5, soreness '+v.sore+'/5, drive '+(v.mot||'-')+'/5.</div>';
+      H+='<div style="margin-top:10px"><button class="gf-btn" data-ck="apply">Rebuild the plan around this</button></div>';
+    }
+    var sig = v? [v.legs,v.sleep,v.sore,v.mot].join(',') : 'none';
+    if(card.getAttribute('data-sig')!==sig){ card.innerHTML=H; card.setAttribute('data-sig',sig); }
+  }
+  setInterval(render, 1500); setTimeout(render, 800);
+})();
+/* ---- coaching profile + wire into every AI call ---- */
+;(function(){
+  function get(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+  var FIELDS=[
+    {k:'exp',label:'Experience',type:'select',opts:['New to this','Building','Experienced','Competitive']},
+    {k:'hours',label:'Hours you can train / week',type:'number',ph:'e.g. 8'},
+    {k:'goal',label:'Main goal / target',type:'text',ph:'e.g. Sub-5:30 at Geelong 70.3'},
+    {k:'limiter',label:'Biggest limiter',type:'select',opts:['Swim','Bike','Run','Strength','Time']},
+    {k:'injuries',label:'Injuries / things to avoid',type:'text',ph:'e.g. left knee — no deep squats'},
+    {k:'sleep',label:'Typical sleep (hours)',type:'number',ph:'e.g. 7'},
+    {k:'rhr',label:'Resting HR (optional)',type:'number',ph:'e.g. 48'}
+  ];
+  function render(){
+    var host=document.getElementById('gv-coach'); if(!host) return; if(document.getElementById('gidProfilePlus')) return;
+    var p=get('gid_profile2')||{};
+    var rows=FIELDS.map(function(f){ var val=p[f.k]!=null?(''+p[f.k]):'';
+      if(f.type==='select'){ var o=f.opts.map(function(x){return '<option'+(x===val?' selected':'')+'>'+x+'</option>';}).join(''); return '<div style="margin-top:10px"><div class="gf-sub" style="margin:0 0 4px">'+f.label+'</div><select class="gf-in" data-pk="'+f.k+'"><option value="">-</option>'+o+'</select></div>'; }
+      return '<div style="margin-top:10px"><div class="gf-sub" style="margin:0 0 4px">'+f.label+'</div><input class="gf-in" data-pk="'+f.k+'" type="'+(f.type==='number'?'number':'text')+'" placeholder="'+(f.ph||'')+'" value="'+val.split('"').join('&quot;')+'"></div>';
+    }).join('');
+    var card=document.createElement('div'); card.id='gidProfilePlus'; card.className='gf-card'; card.style.margin='0 0 12px';
+    card.innerHTML='<div class="gf-k">Coaching profile</div><div class="gf-sub" style="margin-top:0">These tailor every plan, fuel suggestion and coach reply — not for show.</div>'+rows+'<div style="margin-top:12px"><button class="gf-btn" data-pp="save">Save</button> <span class="gf-sub" id="gidPPmsg"></span></div>';
+    host.insertBefore(card, host.firstChild);
+    card.addEventListener('click', function(ev){ var b=ev.target.closest?ev.target.closest('[data-pp]'):null; if(!b)return; var o={}; [].slice.call(card.querySelectorAll('[data-pk]')).forEach(function(el){ var val=(el.value||'').trim(); if(val) o[el.getAttribute('data-pk')]=val; }); try{ localStorage.setItem('gid_profile2', JSON.stringify(o)); }catch(e){} var m=document.getElementById('gidPPmsg'); if(m){ m.textContent='Saved — your coach now uses this.'; m.style.color='var(--good)'; } });
+  }
+  setInterval(render, 1500); setTimeout(render, 800);
+  function profileContext(){ var parts=[]; var p1=get('gid_profile'); if(p1){ if(p1.sports)parts.push('sports: '+(Array.isArray(p1.sports)?p1.sports.join(', '):p1.sports)); if(p1.goal)parts.push('goal: '+p1.goal); if(p1.age)parts.push('age: '+p1.age); if(p1.sex)parts.push('sex: '+p1.sex); if(p1.daysPerWeek)parts.push('days/week: '+p1.daysPerWeek); if(p1.ftp)parts.push('FTP: '+p1.ftp+'W'); if(p1.diet)parts.push('diet: '+p1.diet); }
+    var p2=get('gid_profile2'); if(p2){ var L={exp:'experience',hours:'weekly training hours',goal:'target',limiter:'biggest limiter',injuries:'injuries/avoid',sleep:'typical sleep h',rhr:'resting HR'}; Object.keys(p2).forEach(function(k){ parts.push((L[k]||k)+': '+p2[k]); }); }
+    try{ var d=new Date(); var key='app_checkin_'+d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); var c=JSON.parse(localStorage.getItem(key)||'null'); if(c) parts.push('today check-in 1-5: legs '+c.legs+', sleep '+c.sleep+', soreness '+c.sore+', drive '+c.mot); }catch(e){}
+    return parts.join('; '); }
+  var of=window.fetch;
+  window.fetch=function(input, init){ try{ var url=(typeof input==='string')?input:(input&&input.url); if(url && url.indexOf('/api/u/ai')>-1 && init && init.body && typeof init.body==='string'){ var b=JSON.parse(init.body); if(b && b.message && !b.__gp){ var ctx=profileContext(); if(ctx){ b.message=b.message+' [Athlete profile to tailor to: '+ctx+'.]'; b.__gp=1; var ni=Object.assign({}, init, {body:JSON.stringify(b)}); return of.call(this, input, ni); } } } }catch(e){} return of.apply(this, arguments); };
+})();
