@@ -1598,40 +1598,53 @@
 
 ;(function(){
   function b64ToU8(s){ s=s.split('-').join('+').split('_').join('/'); while(s.length%4)s+='='; var bin=atob(s); var u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; }
-  var MSG='', tried=false;
+  var MSG='', busy=false, confirmed=false;
   function supp(){ return ('Notification' in window)&&('serviceWorker' in navigator)&&('PushManager' in window); }
   function perm(){ return supp()?Notification.permission:'unsupported'; }
-  function geoLL(){ var geo=null; try{ geo=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){} if(!geo)return{lat:null,lon:null}; return { lat:(geo.lat!=null?geo.lat:(geo.latitude!=null?geo.latitude:null)), lon:(geo.lon!=null?geo.lon:(geo.longitude!=null?geo.longitude:null)) }; }
-  function postSub(sub){ var g=geoLL(); return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:g.lat,lon:g.lon})}); }
-  function ensure(){
-    if(perm()!=='granted'||tried) return; tried=true;
-    navigator.serviceWorker.ready.then(function(reg){
-      return reg.pushManager.getSubscription().then(function(sub){
-        if(sub){ return postSub(sub).then(function(){ MSG='Registered on this device.'; render(); }); }
+  function geoLL(){ var g=null; try{ g=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){} if(!g)return{lat:null,lon:null}; return { lat:(g.lat!=null?g.lat:(g.latitude!=null?g.latitude:null)), lon:(g.lon!=null?g.lon:(g.longitude!=null?g.longitude:null)) }; }
+  function postSub(sub){ var g=geoLL(); return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:g.lat,lon:g.lon})}).then(function(r){ if(!r.ok) throw new Error('server '+r.status); return r; }); }
+  function doSubscribe(){
+    if(!('serviceWorker' in navigator)) return Promise.reject(new Error('no service worker'));
+    return navigator.serviceWorker.ready.then(function(reg){
+      return reg.pushManager.getSubscription().then(function(existing){
+        if(existing) return existing;
         return fetch('/api/u/subscribe',{credentials:'include'}).then(function(r){return r.json();}).then(function(k){
-          if(!k.publicKey){ MSG='Server key missing.'; render(); return; }
-          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)}).then(function(s){ return postSub(s).then(function(){ MSG='Registered on this device.'; render(); }); });
+          if(!k.publicKey) throw new Error('no server key');
+          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)});
         });
-      });
-    }).catch(function(e){ tried=false; MSG='Setup could not finish: '+((e&&e.message)||e)+'. Tap Turn off, then Enable again.'; render(); });
+      }).then(function(sub){ return postSub(sub).then(function(){ return sub; }); });
+    });
   }
-  function enable(btn){ if(btn){ btn.textContent='Enabling...'; btn.disabled=true; } Notification.requestPermission().then(function(p){ if(p!=='granted'){ MSG='Not allowed. Turn on notifications for this site, then reopen Cyprus.'; render(); return; } tried=false; ensure(); render(); }).catch(function(e){ MSG='Could not enable: '+((e&&e.message)||e); render(); }); }
-  function disable(){ try{ navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(!s)return; fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); }).then(function(){ tried=false; MSG=''; render(); }); }catch(e){ render(); } }
+  function enable(btn){
+    if(busy) return; busy=true; if(btn){ btn.textContent='Enabling...'; btn.disabled=true; }
+    Notification.requestPermission().then(function(p){
+      if(p!=='granted'){ busy=false; MSG='You said no. Turn it on in iPhone Settings > Cyprus > Notifications, or delete and re-add the app.'; render(); return; }
+      return doSubscribe().then(function(){ busy=false; confirmed=true; MSG='Registered — all set.'; render(); });
+    }).catch(function(e){ busy=false; MSG='Could not finish: '+((e&&e.message)||e); render(); });
+  }
+  function autoheal(){
+    if(perm()!=='granted'||busy||confirmed) return; busy=true;
+    doSubscribe().then(function(){ busy=false; confirmed=true; MSG='Registered on this device.'; render(); }).catch(function(e){ busy=false; MSG='Auto-setup failed: '+((e&&e.message)||e)+'. Tap Retry.'; render(); });
+  }
+  function disable(){
+    busy=true;
+    navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(s){ fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); } }).then(function(){ busy=false; confirmed=false; MSG='Turned off on this device.'; render(); }).catch(function(){ busy=false; confirmed=false; MSG='Turned off.'; render(); });
+  }
   function render(){
     var host=document.getElementById('gv-today'); if(!host) return;
     var card=document.getElementById('gidNotif');
-    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; if(a.getAttribute('data-na')==='on')enable(a); else disable(); }); }
+    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; var act=a.getAttribute('data-na'); if(act==='off')disable(); else enable(a); }); }
     var p=perm();
-    if(p==='granted') ensure();
+    if(p==='granted' && !confirmed && !busy) autoheal();
     var H='<div class="gf-k">Notifications</div>';
-    if(p==='unsupported'){ H+='<div class="gf-sub" style="margin-top:0">On iPhone: tap the Share icon, choose Add to Home Screen, then open Cyprus from that new icon — this turns into an Enable button.</div>'; }
-    else if(p==='denied'){ H+='<div class="gf-sub" style="margin-top:0">Notifications are blocked for this site. Allow them in your browser settings, then reopen Cyprus.</div>'; }
-    else if(p==='granted'){ H+='<div class="gf-row"><span class="l">Plan &amp; weather alerts</span><span class="v" style="color:var(--good)">On</span></div><div style="margin-top:10px"><button class="gf-btn" data-na="off">Turn off</button></div>'; }
+    if(p==='unsupported'){ H+='<div class="gf-sub" style="margin-top:0">On iPhone: Share icon > Add to Home Screen, then open Cyprus from that icon.</div>'; }
+    else if(p==='denied'){ H+='<div class="gf-sub" style="margin-top:0">Blocked. Turn on in iPhone Settings > Cyprus > Notifications, or delete and re-add the app.</div>'; }
+    else if(confirmed){ H+='<div class="gf-row"><span class="l">Plan &amp; weather alerts</span><span class="v" style="color:var(--good)">On</span></div><div style="margin-top:10px"><button class="gf-btn" data-na="off">Turn off</button></div>'; }
+    else if(p==='granted'){ H+='<div class="gf-sub" style="margin-top:0">'+(busy?'Finishing setup on this device…':'Setup did not finish — tap Retry.')+'</div>'+(busy?'':'<div style="margin-top:10px"><button class="gf-btn" data-na="retry">Retry</button></div>'); }
     else { H+='<div class="gf-sub" style="margin-top:0">Get alerted when your plan or the weather changes — without opening the app.</div><div style="margin-top:10px"><button class="gf-btn" data-na="on">Enable notifications</button></div>'; }
     if(MSG) H+='<div class="gf-sub" style="margin-top:8px">'+MSG+'</div>';
-    var sig=p+'|'+MSG;
+    var sig=p+'|'+confirmed+'|'+busy+'|'+MSG;
     if(card.getAttribute('data-sig')!==sig){ card.innerHTML=H; card.setAttribute('data-sig',sig); }
   }
-  setInterval(render,2500); setTimeout(render,800); setTimeout(render,2000);
-  window.__gidNotifCss=1;
+  setInterval(render,2000); setTimeout(render,600); setTimeout(render,1800);
 })();
