@@ -1598,32 +1598,31 @@
 
 ;(function(){
   function b64ToU8(s){ s=s.split('-').join('+').split('_').join('/'); while(s.length%4)s+='='; var bin=atob(s); var u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; }
-  var MSG='';
+  var MSG='', tried=false;
   function supp(){ return ('Notification' in window)&&('serviceWorker' in navigator)&&('PushManager' in window); }
   function perm(){ return supp()?Notification.permission:'unsupported'; }
-  function subscribeFlow(btn){
-    if(btn){ btn.textContent='Enabling...'; btn.disabled=true; }
-    Notification.requestPermission().then(function(p){
-      if(p!=='granted'){ MSG='Not allowed. Turn on notifications for this site, then reopen Cyprus.'; render(); return; }
-      return navigator.serviceWorker.ready.then(function(reg){
+  function geoLL(){ var geo=null; try{ geo=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){} if(!geo)return{lat:null,lon:null}; return { lat:(geo.lat!=null?geo.lat:(geo.latitude!=null?geo.latitude:null)), lon:(geo.lon!=null?geo.lon:(geo.longitude!=null?geo.longitude:null)) }; }
+  function postSub(sub){ var g=geoLL(); return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:g.lat,lon:g.lon})}); }
+  function ensure(){
+    if(perm()!=='granted'||tried) return; tried=true;
+    navigator.serviceWorker.ready.then(function(reg){
+      return reg.pushManager.getSubscription().then(function(sub){
+        if(sub){ return postSub(sub).then(function(){ MSG='Registered on this device.'; render(); }); }
         return fetch('/api/u/subscribe',{credentials:'include'}).then(function(r){return r.json();}).then(function(k){
           if(!k.publicKey){ MSG='Server key missing.'; render(); return; }
-          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)}).then(function(sub){
-            var geo=null; try{ geo=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){}
-            var lat=geo?(geo.lat!=null?geo.lat:(geo.latitude!=null?geo.latitude:null)):null;
-            var lon=geo?(geo.lon!=null?geo.lon:(geo.longitude!=null?geo.longitude:null)):null;
-            return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:lat,lon:lon})}).then(function(){ MSG='Done — notifications are on.'; render(); });
-          });
+          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)}).then(function(s){ return postSub(s).then(function(){ MSG='Registered on this device.'; render(); }); });
         });
       });
-    }).catch(function(e){ MSG='Could not enable: '+((e&&e.message)||e); render(); });
+    }).catch(function(e){ tried=false; MSG='Setup could not finish: '+((e&&e.message)||e)+'. Tap Turn off, then Enable again.'; render(); });
   }
-  function disable(){ try{ navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(!s)return; fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); }).then(function(){ MSG=''; render(); }); }catch(e){ render(); } }
+  function enable(btn){ if(btn){ btn.textContent='Enabling...'; btn.disabled=true; } Notification.requestPermission().then(function(p){ if(p!=='granted'){ MSG='Not allowed. Turn on notifications for this site, then reopen Cyprus.'; render(); return; } tried=false; ensure(); render(); }).catch(function(e){ MSG='Could not enable: '+((e&&e.message)||e); render(); }); }
+  function disable(){ try{ navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(!s)return; fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); }).then(function(){ tried=false; MSG=''; render(); }); }catch(e){ render(); } }
   function render(){
     var host=document.getElementById('gv-today'); if(!host) return;
     var card=document.getElementById('gidNotif');
-    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; if(a.getAttribute('data-na')==='on')subscribeFlow(a); else disable(); }); }
+    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; if(a.getAttribute('data-na')==='on')enable(a); else disable(); }); }
     var p=perm();
+    if(p==='granted') ensure();
     var H='<div class="gf-k">Notifications</div>';
     if(p==='unsupported'){ H+='<div class="gf-sub" style="margin-top:0">On iPhone: tap the Share icon, choose Add to Home Screen, then open Cyprus from that new icon — this turns into an Enable button.</div>'; }
     else if(p==='denied'){ H+='<div class="gf-sub" style="margin-top:0">Notifications are blocked for this site. Allow them in your browser settings, then reopen Cyprus.</div>'; }
