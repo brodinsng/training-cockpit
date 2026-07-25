@@ -1602,45 +1602,36 @@
   function supp(){ return ('Notification' in window)&&('serviceWorker' in navigator)&&('PushManager' in window); }
   function perm(){ return supp()?Notification.permission:'unsupported'; }
   function geoLL(){ var g=null; try{ g=JSON.parse(localStorage.getItem('gid_geo')||'null'); }catch(e){} if(!g)return{lat:null,lon:null}; return { lat:(g.lat!=null?g.lat:(g.latitude!=null?g.latitude:null)), lon:(g.lon!=null?g.lon:(g.longitude!=null?g.longitude:null)) }; }
-  function postSub(sub){ var g=geoLL(); return fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:g.lat,lon:g.lon})}).then(function(r){ if(!r.ok) throw new Error('server '+r.status); return r; }); }
-  function doSubscribe(){
+  function timeout(promise, ms, label){ return new Promise(function(resolve,reject){ var done=false; var t=setTimeout(function(){ if(done)return; done=true; reject(new Error((label||'step')+' timed out')); }, ms); promise.then(function(v){ if(done)return; done=true; clearTimeout(t); resolve(v); }, function(e){ if(done)return; done=true; clearTimeout(t); reject(e); }); }); }
+  function postSub(sub){ var g=geoLL(); return timeout(fetch('/api/u/subscribe',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),lat:g.lat,lon:g.lon})}), 8000, 'save').then(function(r){ if(!r.ok) throw new Error('server '+r.status); return r; }); }
+  function subscribeOnce(){
     if(!('serviceWorker' in navigator)) return Promise.reject(new Error('no service worker'));
-    return navigator.serviceWorker.ready.then(function(reg){
+    return timeout(navigator.serviceWorker.ready, 8000, 'service worker').then(function(reg){
       return reg.pushManager.getSubscription().then(function(existing){
         if(existing) return existing;
-        return fetch('/api/u/subscribe',{credentials:'include'}).then(function(r){return r.json();}).then(function(k){
+        return timeout(fetch('/api/u/subscribe',{credentials:'include'}), 8000, 'key').then(function(r){return r.json();}).then(function(k){
           if(!k.publicKey) throw new Error('no server key');
-          return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)});
+          return timeout(reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToU8(k.publicKey)}), 9000, 'subscribe');
         });
       }).then(function(sub){ return postSub(sub).then(function(){ return sub; }); });
     });
   }
-  function enable(btn){
-    if(busy) return; busy=true; if(btn){ btn.textContent='Enabling...'; btn.disabled=true; }
-    Notification.requestPermission().then(function(p){
-      if(p!=='granted'){ busy=false; MSG='You said no. Turn it on in iPhone Settings > Cyprus > Notifications, or delete and re-add the app.'; render(); return; }
-      return doSubscribe().then(function(){ busy=false; confirmed=true; MSG='Registered — all set.'; render(); });
-    }).catch(function(e){ busy=false; MSG='Could not finish: '+((e&&e.message)||e); render(); });
-  }
-  function autoheal(){
-    if(perm()!=='granted'||busy||confirmed) return; busy=true;
-    doSubscribe().then(function(){ busy=false; confirmed=true; MSG='Registered on this device.'; render(); }).catch(function(e){ busy=false; MSG='Auto-setup failed: '+((e&&e.message)||e)+'. Tap Retry.'; render(); });
-  }
-  function disable(){
-    busy=true;
-    navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(s){ fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); } }).then(function(){ busy=false; confirmed=false; MSG='Turned off on this device.'; render(); }).catch(function(){ busy=false; confirmed=false; MSG='Turned off.'; render(); });
-  }
+  function attempt(n){ return subscribeOnce().catch(function(e){ if(n>0){ return new Promise(function(res){ setTimeout(res,1500); }).then(function(){ return attempt(n-1); }); } throw e; }); }
+  function run(){ if(busy)return; busy=true; MSG=''; render(); attempt(3).then(function(){ busy=false; confirmed=true; MSG='Registered — all set.'; render(); }).catch(function(e){ busy=false; MSG='Setup failed: '+((e&&e.message)||e)+'. Tap Retry.'; render(); }); }
+  function enable(btn){ if(busy)return; if(btn){ btn.textContent='Enabling...'; btn.disabled=true; } Notification.requestPermission().then(function(p){ if(p!=='granted'){ MSG='You said no. Turn it on in iPhone Settings > Cyprus > Notifications, or delete and re-add the app.'; render(); return; } run(); }).catch(function(e){ MSG='Could not start: '+((e&&e.message)||e); render(); }); }
+  function disable(){ busy=true; navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(s){ if(s){ fetch('/api/u/subscribe',{method:'DELETE',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})}).catch(function(){}); return s.unsubscribe(); } }).then(function(){ busy=false; confirmed=false; MSG='Turned off on this device.'; render(); }).catch(function(){ busy=false; confirmed=false; MSG='Turned off.'; render(); }); }
   function render(){
     var host=document.getElementById('gv-today'); if(!host) return;
     var card=document.getElementById('gidNotif');
-    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; var act=a.getAttribute('data-na'); if(act==='off')disable(); else enable(a); }); }
+    if(!card){ card=document.createElement('div'); card.id='gidNotif'; card.className='gf-card'; card.style.margin='0 0 12px'; host.insertBefore(card, host.firstChild); card.addEventListener('click', function(ev){ var a=ev.target.closest?ev.target.closest('[data-na]'):null; if(!a)return; if(a.getAttribute('data-na')==='off')disable(); else enable(a); }); }
     var p=perm();
-    if(p==='granted' && !confirmed && !busy) autoheal();
+    if(p==='granted' && !confirmed && !busy) run();
     var H='<div class="gf-k">Notifications</div>';
     if(p==='unsupported'){ H+='<div class="gf-sub" style="margin-top:0">On iPhone: Share icon > Add to Home Screen, then open Cyprus from that icon.</div>'; }
     else if(p==='denied'){ H+='<div class="gf-sub" style="margin-top:0">Blocked. Turn on in iPhone Settings > Cyprus > Notifications, or delete and re-add the app.</div>'; }
     else if(confirmed){ H+='<div class="gf-row"><span class="l">Plan &amp; weather alerts</span><span class="v" style="color:var(--good)">On</span></div><div style="margin-top:10px"><button class="gf-btn" data-na="off">Turn off</button></div>'; }
-    else if(p==='granted'){ H+='<div class="gf-sub" style="margin-top:0">'+(busy?'Finishing setup on this device…':'Setup did not finish — tap Retry.')+'</div>'+(busy?'':'<div style="margin-top:10px"><button class="gf-btn" data-na="retry">Retry</button></div>'); }
+    else if(busy){ H+='<div class="gf-sub" style="margin-top:0">Finishing setup on this device…</div>'; }
+    else if(p==='granted'){ H+='<div class="gf-sub" style="margin-top:0">Setup did not finish — tap Retry.</div><div style="margin-top:10px"><button class="gf-btn" data-na="retry">Retry</button></div>'; }
     else { H+='<div class="gf-sub" style="margin-top:0">Get alerted when your plan or the weather changes — without opening the app.</div><div style="margin-top:10px"><button class="gf-btn" data-na="on">Enable notifications</button></div>'; }
     if(MSG) H+='<div class="gf-sub" style="margin-top:8px">'+MSG+'</div>';
     var sig=p+'|'+confirmed+'|'+busy+'|'+MSG;
