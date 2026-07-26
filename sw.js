@@ -2,7 +2,7 @@
 // Strategy: NETWORK-FIRST for the app shell so the phone always gets the latest
 // version when online (falling back to cache only when offline). API calls always
 // go straight to the network and are never cached. Bump CACHE to force a refresh.
-const CACHE = 'cockpit-v3';
+const CACHE = 'cockpit-v4';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -20,6 +20,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (u.pathname.startsWith('/api/')) return; // never cache live data
+  if (u.pathname === '/skin.js') return; // always network-fresh app code
   // Network-first: fetch fresh, cache a copy, fall back to cache when offline.
   e.respondWith(
     fetch(e.request)
