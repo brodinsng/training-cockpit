@@ -1704,3 +1704,27 @@
   var of=window.fetch;
   window.fetch=function(input, init){ try{ var url=(typeof input==='string')?input:(input&&input.url); if(url && url.indexOf('/api/u/ai')>-1 && init && init.body && typeof init.body==='string'){ var b=JSON.parse(init.body); if(b && b.message && !b.__gp){ var ctx=profileContext(); if(ctx){ b.message=b.message+' ### '+ctx; b.__gp=1; var ni=Object.assign({}, init, {body:JSON.stringify(b)}); return of.call(this, input, ni); } } } }catch(e){} return of.apply(this, arguments); };
 })();
+
+/* ---- gidFixedEnforce: lock fixed sessions + off-days onto the generated week ---- */
+;(function(){
+  function get(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+  var DNAMES=[['sunday',0],['saturday',6],['thursday',4],['wednesday',3],['tuesday',2],['monday',1],['friday',5],['sun',0],['mon',1],['tues',2],['tue',2],['weds',3],['wed',3],['thurs',4],['thur',4],['thu',4],['fri',5],['sat',6]];
+  function dayIdx(text){ text=(''+text).toLowerCase(); for(var i=0;i<DNAMES.length;i++){ if(text.indexOf(DNAMES[i][0])>-1) return DNAMES[i][1]; } return -1; }
+  function stripDay(p){ var lw=p.toLowerCase(); for(var i=0;i<DNAMES.length;i++){ var n=DNAMES[i][0]; var idx=lw.indexOf(n); if(idx>-1){ p=p.slice(0,idx)+p.slice(idx+n.length); lw=p.toLowerCase(); } } return p.replace(/[^A-Za-z0-9]+/g,' ').trim(); }
+  function sportOf(label){ var l=(''+label).toLowerCase(); var bike=['five45','ccp','wcw','ride','bike','cycl','spin','zwift','watt','trainer','turbo']; for(var i=0;i<bike.length;i++){ if(l.indexOf(bike[i])>-1) return 'Bike'; } if(l.indexOf('swim')>-1) return 'Swim'; if(l.indexOf('run')>-1||l.indexOf('jog')>-1) return 'Run'; if(l.indexOf('gym')>-1||l.indexOf('strength')>-1||l.indexOf('lift')>-1) return 'Strength'; return null; }
+  function parseFixed(str){ var m={}; if(!str) return m; str.split(',').forEach(function(p){ p=p.trim(); if(!p) return; var di=dayIdx(p); if(di>=0){ var label=stripDay(p)||p; m[di]=label; } }); return m; }
+  function parseOff(str){ var out=[]; if(!str) return out; str.split(',').forEach(function(p){ var di=dayIdx(p); if(di>=0 && out.indexOf(di)<0) out.push(di); }); return out; }
+  function enforce(){
+    var p2=get('gid_profile2'); if(!p2) return;
+    var fixedMap=parseFixed(p2.fixed), off=parseOff(p2.offdays);
+    if(!Object.keys(fixedMap).length && !off.length) return;
+    var w=get('gid_week'); if(!w || !w.sessions) return;
+    var changed=false;
+    w.sessions.forEach(function(s){ var di=dayIdx(s.dow); if(di<0) return;
+      if(off.indexOf(di)>-1){ if(s.sport!=='Rest'){ s.sport='Rest'; s.durationMin=0; s.focus='rest (you cannot train)'; s.rest=true; changed=true; } return; }
+      if(fixedMap[di]!=null){ var label=fixedMap[di]; var sp=sportOf(label)||s.sport; if(s.focus!==label || s.sport!==sp || s.rest){ s.sport=sp; s.focus=label; s.rest=false; if(!s.durationMin || s.durationMin<30) s.durationMin=90; s.fixed=true; changed=true; } }
+    });
+    if(changed){ try{ localStorage.setItem('gid_week', JSON.stringify(w)); }catch(e){} }
+  }
+  setInterval(enforce, 2000); setTimeout(enforce, 700); setTimeout(enforce, 1500);
+})();
