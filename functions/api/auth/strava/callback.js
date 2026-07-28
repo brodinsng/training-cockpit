@@ -3,7 +3,9 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const origin = url.origin;
   const code = url.searchParams.get('code');
-  if (!code) return Response.redirect(origin + '/app/?err=strava', 302);
+  const state = url.searchParams.get('state');
+  const dest = (state && state.startsWith('/') && !state.startsWith('//')) ? state : '/app/';
+  if (!code) return Response.redirect(origin + dest + (dest.indexOf('?')>-1?'&':'?') + 'err=strava', 302);
   const res = await fetch('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -15,9 +17,9 @@ export async function onRequestGet({ request, env }) {
     }),
   });
   const d = await res.json();
-  if (!d.refresh_token) return Response.redirect(origin + '/app/?err=strava_token', 302);
+  if (!d.refresh_token) return Response.redirect(origin + dest + (dest.indexOf('?')>-1?'&':'?') + 'err=strava_token', 302);
   const headers = new Headers();
   headers.append('Set-Cookie', `s_rt=${encodeURIComponent(d.refresh_token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=34560000`);
-  headers.append('Location', origin + '/app/');
+  headers.append('Location', origin + dest);
   return new Response(null, { status: 302, headers });
 }
