@@ -11,6 +11,7 @@
     --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#262d36;
     --ink:#e6edf3; --mut:#8b949e; --dim:#6e7681;
     --accent:#6f8fb0; --good:#57a773; --warn:#d0954a; --bad:#c96b6b;
+    --bike:#6f8fb0; --swim:#5aa6c0; --run:#c98f6b; --rest:#6e7681;
     --r:14px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
@@ -41,14 +42,26 @@
   .t-good{color:var(--good); border-color:#2b5138}
   .t-warn{color:var(--warn); border-color:#5a4526}
   .t-bad{color:var(--bad); border-color:#5a2f2f}
-  .sess{display:flex; justify-content:space-between; align-items:center;
-    padding:11px 0; border-bottom:1px solid var(--line)}
+  .sess{display:flex; align-items:center; padding:11px 0; border-bottom:1px solid var(--line)}
   .sess:last-child{border-bottom:0}
-  .sess .d{color:var(--dim); font-size:12px; width:38px}
-  .sess .m{flex:1; padding:0 10px}
-  .sess .m b{font-weight:600} .sess .m span{color:var(--dim); font-size:12px}
+  .sess .d{color:var(--dim); font-size:12px; width:38px; flex:none}
+  .sess .dot{width:8px; height:8px; border-radius:50%; margin:0 10px 0 0; flex:none}
+  .sess .m{flex:1}
+  .sess .m b{font-weight:600} .sess .m span{color:var(--dim); font-size:12px; display:block}
+  .sess .lk{color:var(--dim); font-size:10px; letter-spacing:.5px; text-transform:uppercase; flex:none}
   .flag{background:linear-gradient(180deg,#1c232c,#161b22); border-color:#3a2f22}
   .flag h2{color:var(--warn)}
+  .btn{display:inline-block; background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:10px; padding:10px 14px; font-size:14px; font-weight:600; cursor:pointer}
+  .btn:active{opacity:.7}
+  .btn.acc{background:var(--accent); border-color:var(--accent); color:#0d1117}
+  input,textarea{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:10px; padding:11px; font:inherit; margin:0 0 10px}
+  textarea{min-height:64px; resize:vertical}
+  .msg{padding:10px 12px; border-radius:10px; margin:0 0 8px; font-size:14px}
+  .msg.u{background:var(--panel2); border:1px solid var(--line)}
+  .msg.a{background:#141c26; border:1px solid #24344a}
+  .msg.a b{color:var(--accent)}
   nav.tabs{position:fixed; left:0; right:0; bottom:0; z-index:40;
     display:flex; justify-content:space-around; gap:2px;
     background:rgba(13,17,23,.92); backdrop-filter:blur(12px);
@@ -62,6 +75,8 @@
   .spark{display:flex; align-items:flex-end; gap:3px; height:44px; margin-top:10px}
   .spark i{flex:1; background:var(--accent); opacity:.5; border-radius:2px 2px 0 0; min-height:2px}
   .spark i.today{opacity:1}
+  .cd{font-size:22px; font-weight:650; letter-spacing:-.3px}
+  .muted{color:var(--dim)}
 </style>
 </head>
 <body>
@@ -89,167 +104,211 @@
 </nav>
 
 <script>
-/* ---------- Cyprus v2 foundation ----------
-   Owns one clean state model. Reuses existing backend:
+/* ================= Cyprus v2 =================
+   One clean codebase. Reuses existing backend:
    /api/me, /api/u/activities, /api/u/events, /api/u/ai
------------------------------------------------- */
-const ZONES = {
-  hr:[127,158,174,189], ftp:199,
-  runPace:[2.83,3.288,3.662,3.912,4.162], // m/s boundaries
-  weight:65
-};
-const S = { me:null, acts:[], events:[], fit:null, view:'today', ready:false };
+   Auto-derives everything it can from Strava.
+=============================================== */
+const ZONES = { hr:[127,158,174,189], ftp:199, runPace:[2.83,3.288,3.662,3.912,4.162], weight:65, fivek:'21:11' };
+// Fixed weekly anchors (0=Sun..6=Sat) — his real constraints
+const FIXED = { 3:{sport:'Bike',label:'FIVE45'}, 5:{sport:'Bike',label:'FIVE45'}, 6:{sport:'Bike',label:'FIVE45'}, 0:{sport:'Bike',label:'CCP'} };
+const S = { me:null, acts:[], events:[], fit:null, week:null, view:'today', ready:false, chat:[] };
 
 const $ = s => document.querySelector(s);
 const el = (t,c,h)=>{const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e;};
 const mins = s => Math.round(s/60);
 const fmtPace = mps => { if(!mps) return '—'; const s=1000/mps; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0')+'/km'; };
-const dayName = d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const SPORTCOL={Bike:'var(--bike)',Swim:'var(--swim)',Run:'var(--run)',Rest:'var(--rest)'};
 
 async function getJSON(u){ const r=await fetch(u,{credentials:'include'}); if(!r.ok) throw new Error(u+' '+r.status); return r.json(); }
+async function postAI(message){ const r=await fetch('/api/u/ai',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})}); const j=await r.json(); return j.reply||j.message||'(no reply)'; }
 
-/* ---- Fitness model: CTL/ATL/TSB from real load (relative_effort) ---- */
+/* ---- Fitness: CTL/ATL/TSB from real load ---- */
 function computeFitness(acts){
-  // build daily load for last 60 days
-  const today = new Date(); today.setHours(0,0,0,0);
-  const day0 = today.getTime();
-  const load = {}; // dayIndex(0=today, negative past) -> load
+  const today=new Date(); today.setHours(0,0,0,0); const day0=today.getTime();
+  const load={};
   acts.forEach(a=>{
-    const d = new Date(a.start_local || a.start_date_local || a.start_date);
-    d.setHours(0,0,0,0);
-    const idx = Math.round((d.getTime()-day0)/864e5);
-    if(idx>-60 && idx<=0){
-      const l = (a.summary && a.summary.relative_effort) || a.relative_effort || 0;
-      load[idx] = (load[idx]||0) + l;
-    }
+    const d=new Date(a.start_local||a.start_date_local||a.start_date); d.setHours(0,0,0,0);
+    const idx=Math.round((d.getTime()-day0)/864e5);
+    if(idx>-60 && idx<=0){ const l=(a.summary&&a.summary.relative_effort)||a.relative_effort||0; load[idx]=(load[idx]||0)+l; }
   });
-  // EWMA from oldest to today
-  const kC = 2/(42+1), kA = 2/(7+1);
-  let ctl=0, atl=0;
+  const kC=2/(42+1), kA=2/(7+1); let ctl=0, atl=0;
   for(let i=-59;i<=0;i++){ const l=load[i]||0; ctl=ctl+kC*(l-ctl); atl=atl+kA*(l-atl); }
-  const tsb = ctl-atl;
-  // 14-day load spark
   const spark=[]; for(let i=-13;i<=0;i++) spark.push(load[i]||0);
-  return { ctl:Math.round(ctl), atl:Math.round(atl), tsb:Math.round(tsb), spark };
+  // 7-day trend of CTL for ramp
+  let ctl7=0; for(let i=-59;i<=-7;i++){ const l=load[i]||0; ctl7=ctl7+kC*(l-ctl7); }
+  return { ctl:Math.round(ctl), atl:Math.round(atl), tsb:Math.round(ctl-atl), spark, ramp:Math.round(ctl-ctl7) };
 }
-
-/* ---- One authoritative readiness verdict (no fresh-vs-fatigued split) ---- */
 function readiness(f){
   const t=f.tsb;
-  if(t <= -20) return {tag:'Overreached', cls:'t-bad', line:'Deep fatigue. Today is recovery or rest — not a day to add load.'};
-  if(t <= -8)  return {tag:'Fatigued', cls:'t-warn', line:'Carrying real load. Keep today easy; save intensity for when form recovers.'};
-  if(t < 5)    return {tag:'Neutral', cls:'', line:'Balanced. Fine to train as planned; let the session dictate effort.'};
-  if(t < 15)   return {tag:'Fresh', cls:'t-good', line:'Recovered and ready. Good window for a quality or key session.'};
-  return {tag:'Very fresh', cls:'t-good', line:'Well rested — if anything you may be under-training. Push the key session.'};
+  if(t<=-20) return {tag:'Overreached', cls:'t-bad', line:'Deep fatigue. Today is recovery or rest — not a day to add load.'};
+  if(t<=-8)  return {tag:'Fatigued', cls:'t-warn', line:'Carrying real load. Keep today easy; save intensity for when form recovers.'};
+  if(t<5)    return {tag:'Neutral', cls:'', line:'Balanced. Train as planned; let the session dictate effort.'};
+  if(t<15)   return {tag:'Fresh', cls:'t-good', line:'Recovered and ready. Good window for a quality or key session.'};
+  return {tag:'Very fresh', cls:'t-good', line:'Well rested — if anything under-trained. Push the key session.'};
 }
-
-/* ---- Limiter watch: neglected weak link (swim) ---- */
 function limiterWatch(acts){
   const now=Date.now();
-  const swims = acts.filter(a=>{
-    const st=(a.sport_type||a.type||'').toLowerCase();
-    const d=new Date(a.start_local||a.start_date_local);
-    return st.includes('swim') && (now-d.getTime()) < 21*864e5;
-  });
-  if(swims.length===0) return {sport:'Swim', line:'No swim logged in 3 weeks. Swim is your limiter — one session this week protects it.'};
+  const swims=acts.filter(a=>{ const st=(a.sport_type||a.type||'').toLowerCase(); const d=new Date(a.start_local||a.start_date_local); return st.includes('swim') && (now-d.getTime())<21*864e5; });
+  if(swims.length===0) return {line:'No swim logged in 3 weeks. Swim is your limiter — one session this week protects it.'};
   return null;
+}
+
+/* ---- Adaptive week: honors fixed anchors, inserts limiter + recovery ---- */
+function buildWeek(fit){
+  const out=[]; const today=new Date(); today.setHours(0,0,0,0);
+  const fatigued = fit.tsb<=-8; let swimPlaced=false, runPlaced=false;
+  for(let i=0;i<7;i++){
+    const d=new Date(today.getTime()+i*864e5); const dow=d.getDay();
+    if(FIXED[dow]){ out.push({d,dow,sport:FIXED[dow].sport,label:FIXED[dow].label,fixed:true,note:'Locked'}); continue; }
+    if(dow===1){ out.push({d,dow,sport:'Rest',label:'Recovery',fixed:false,note:'Post-weekend — let the legs come back'}); continue; }
+    if(!swimPlaced){ swimPlaced=true; out.push({d,dow,sport:'Swim',label:'Technique + aerobic',fixed:false,note:'Your limiter — protect this slot'}); continue; }
+    if(!runPlaced && !fatigued){ runPlaced=true; out.push({d,dow,sport:'Run',label:'Easy aerobic Z2',fixed:false,note:'Keep it conversational'}); continue; }
+    out.push({d,dow,sport:'Rest',label:fatigued?'Rest':'Optional easy',fixed:false,note:fatigued?'Form is low — recover':'Add only if fresh'});
+  }
+  return out;
+}
+function todaySession(){ return (S.week||[]).find(x=>x.dow===new Date().getDay()); }
+
+/* ---- Coach context (injected into every message) ---- */
+function coachContext(){
+  const f=S.fit;
+  const recent=S.acts.slice(0,6).map(a=>(a.sport_type||'?')+' RE'+((a.summary&&a.summary.relative_effort)||0)).join(', ');
+  return 'MY LIVE DATA — Fitness/CTL '+f.ctl+', Fatigue/ATL '+f.atl+', Form/TSB '+f.tsb+' ('+readiness(f).tag+'), 6-wk ramp '+(f.ramp>=0?'+':'')+f.ramp+'. '
+    +'Zones: HR Z2 128-158 Z4 175-189, FTP 199W, threshold pace '+fmtPace(ZONES.runPace[3])+', 5k ~'+ZONES.fivek+', 65kg. '
+    +'Limiter: SWIM (weak link). Fixed sessions: Wed/Fri/Sat FIVE45 bike, Sun CCP bike — never move these. '
+    +'Recent: '+recent+'. Answer as my coach using THIS data; be specific and brief.';
 }
 
 /* ---------- Views ---------- */
 function renderToday(){
-  const v=$('#v-today'); v.innerHTML='';
-  const f=S.fit, r=readiness(f);
-  const c1=el('div','card');
-  c1.append(el('h2',null,'Readiness · today'));
+  const v=$('#v-today'); v.innerHTML=''; const f=S.fit, r=readiness(f);
+  const c1=el('div','card'); c1.append(el('h2',null,'Readiness · today'));
   const top=el('div','row'); top.style.alignItems='baseline'; top.style.justifyContent='space-between';
-  top.append(el('div','big',r.tag));
-  top.append(el('div','tag '+r.cls, 'Form '+(f.tsb>=0?'+':'')+f.tsb));
-  c1.append(top);
-  c1.append(el('div','verdict',r.line));
-  v.append(c1);
+  top.append(el('div','big',r.tag)); top.append(el('div','tag '+r.cls,'Form '+(f.tsb>=0?'+':'')+f.tsb));
+  c1.append(top); c1.append(el('div','verdict',r.line)); v.append(c1);
+
+  const ts=todaySession();
+  if(ts){ const c=el('div','card'); c.append(el('h2',null,'Today’s session'));
+    const s=el('div','sess'); const dot=el('div','dot'); dot.style.background=SPORTCOL[ts.sport]||'var(--dim)'; s.append(dot);
+    const m=el('div','m'); m.innerHTML='<b>'+ts.sport+(ts.label?' · '+ts.label:'')+'</b><span>'+ts.note+'</span>'; s.append(m);
+    if(ts.fixed) s.append(el('div','lk','locked'));
+    c.append(s); v.append(c);
+  }
 
   const lim=limiterWatch(S.acts);
   if(lim){ const fc=el('div','card flag'); fc.append(el('h2',null,'Limiter watch')); fc.append(el('div','lede',lim.line)); v.append(fc); }
 
-  // last session
   const last=S.acts[0];
-  if(last){
-    const c2=el('div','card'); c2.append(el('h2',null,'Last session'));
-    const su=last.summary||{};
+  if(last){ const c2=el('div','card'); c2.append(el('h2',null,'Last session')); const su=last.summary||{};
     c2.append(el('div','verdict','<b>'+last.name+'</b>'));
-    c2.append(el('div','lede',(su.distance?(su.distance/1000).toFixed(1)+' km · ':'')+
-      (su.moving_time?mins(su.moving_time)+' min · ':'')+'RE '+(su.relative_effort||'—')));
+    c2.append(el('div','lede',(su.distance?(su.distance/1000).toFixed(1)+' km · ':'')+(su.moving_time?mins(su.moving_time)+' min · ':'')+'RE '+(su.relative_effort||'—')));
     v.append(c2);
   }
 }
 function renderFitness(){
-  const v=$('#v-fitness'); v.innerHTML='';
-  const f=S.fit;
+  const v=$('#v-fitness'); v.innerHTML=''; const f=S.fit;
   const c=el('div','card'); c.append(el('h2',null,'Fitness'));
   const row=el('div','row');
   [['Fitness',f.ctl],['Fatigue',f.atl],['Form',(f.tsb>=0?'+':'')+f.tsb]].forEach(m=>{
     const mm=el('div','metric'); mm.append(el('div','k',m[0])); mm.append(el('div','v',m[1])); row.append(mm);
   });
   c.append(row);
-  const sp=el('div','spark');
-  const max=Math.max(1,...f.spark);
+  const sp=el('div','spark'); const max=Math.max(1,...f.spark);
   f.spark.forEach((l,i)=>{const b=el('i'); b.style.height=(6+l/max*38)+'px'; if(i===f.spark.length-1)b.className='today'; sp.append(b);});
   c.append(sp);
-  c.append(el('div','lede','14-day training load. Fitness (CTL) is your rolling 42-day load; Form (TSB) is fitness minus fatigue.'));
+  c.append(el('div','lede','14-day load. Fitness (CTL) is your rolling 42-day load; Form (TSB) is fitness minus fatigue. 6-week trend: '+(f.ramp>=0?'building +':'easing ')+f.ramp+'.'));
   v.append(c);
-
   const z=el('div','card'); z.append(el('h2',null,'Your zones (from Strava)'));
-  z.append(el('div','lede','HR Z2 128–158 · Z4 175–189 · FTP '+ZONES.ftp+'W · threshold pace '+fmtPace(ZONES.runPace[3])));
+  z.append(el('div','lede','HR Z2 128–158 · Z4 175–189 · FTP '+ZONES.ftp+'W · threshold pace '+fmtPace(ZONES.runPace[3])+' · 5k ~'+ZONES.fivek));
   v.append(z);
 }
-function evDate(e){ return new Date((e.start&&(e.start.dateTime||e.start.date))||e.start_local||Date.now()); }
 function renderSchedule(){
   const v=$('#v-schedule'); v.innerHTML='';
-  const c=el('div','card'); c.append(el('h2',null,'Next 7 days'));
-  const now=new Date(); now.setHours(0,0,0,0);
-  const start=now.getTime(), end=start+8*864e5;
-  const evs=(S.events||[]).map(e=>({e,d:evDate(e)}))
-    .filter(x=>x.d.getTime()>=start && x.d.getTime()<=end)
-    .sort((a,b)=>a.d-b.d).slice(0,14);
-  if(!evs.length){ c.append(el('div','lede','Nothing on the calendar for the next 7 days.')); }
-  evs.forEach(x=>{
-    const s=el('div','sess');
-    s.append(el('div','d',dayName(x.d)));
-    const m=el('div','m');
-    const tm=(x.d.getHours()||x.d.getMinutes())?(String(x.d.getHours()).padStart(2,'0')+':'+String(x.d.getMinutes()).padStart(2,'0')):'';
-    m.innerHTML='<b>'+(x.e.summary||'Session')+'</b>'+(tm?' <span>'+tm+'</span>':'');
-    s.append(m);
+  const c=el('div','card'); c.append(el('h2',null,'Adaptive week'));
+  (S.week||[]).forEach(x=>{
+    const s=el('div','sess'); s.append(el('div','d',DAY[x.dow]));
+    const dot=el('div','dot'); dot.style.background=SPORTCOL[x.sport]||'var(--dim)'; s.append(dot);
+    const m=el('div','m'); m.innerHTML='<b>'+x.sport+(x.label?' · '+x.label:'')+'</b><span>'+x.note+'</span>'; s.append(m);
+    if(x.fixed) s.append(el('div','lk','locked'));
     c.append(s);
   });
   v.append(c);
-  const note=el('div','card'); note.append(el('h2',null,'Fixed anchors'));
-  note.append(el('div','lede','Wed / Fri / Sat FIVE45 and Sun CCP are locked — the adaptive plan builds around them, never over them.'));
-  v.append(note);
+  const info=el('div','card'); info.append(el('h2',null,'How this is built'));
+  info.append(el('div','lede','Wed / Fri / Sat FIVE45 and Sun CCP are locked and never moved. The open days fill around them — a swim first (your limiter), then easy aerobic, with rest that flexes to your current form.'));
+  v.append(info);
+
+  // calendar this week (real events)
+  const now=new Date(); now.setHours(0,0,0,0); const end=now.getTime()+8*864e5;
+  const evs=(S.events||[]).map(e=>({e,d:new Date((e.start&&(e.start.dateTime||e.start.date))||Date.now())}))
+    .filter(x=>x.d.getTime()>=now.getTime()&&x.d.getTime()<=end).sort((a,b)=>a.d-b.d).slice(0,12);
+  if(evs.length){ const cc=el('div','card'); cc.append(el('h2',null,'On your calendar'));
+    evs.forEach(x=>{ const s=el('div','sess'); s.append(el('div','d',DAY[x.d.getDay()]));
+      const m=el('div','m'); const tm=(x.d.getHours()||x.d.getMinutes())?String(x.d.getHours()).padStart(2,'0')+':'+String(x.d.getMinutes()).padStart(2,'0'):'';
+      m.innerHTML='<b>'+(x.e.summary||'Event')+'</b>'+(tm?'<span>'+tm+'</span>':''); s.append(m); cc.append(s);
+    });
+    v.append(cc);
+  }
 }
 function renderFuel(){
-  const v=$('#v-fuel'); v.innerHTML='';
-  const h=new Date().getHours();
-  const meal = h<10?'Breakfast':h<15?'Lunch':h<20?'Dinner':'Evening';
-  const f=S.fit; const hard = f.atl>f.ctl+3;
+  const v=$('#v-fuel'); v.innerHTML=''; const h=new Date().getHours();
+  const meal=h<10?'Breakfast':h<15?'Lunch':h<20?'Dinner':'Evening';
+  const f=S.fit, ts=todaySession(); const hardDay = ts && (ts.sport==='Bike'||ts.sport==='Run') && ts.fixed;
+  const highLoad = f.atl>f.ctl+3;
   const c=el('div','card'); c.append(el('h2',null,meal+' · recovery-aware'));
-  const msg = hard
-    ? 'Load is high right now — prioritise protein + carbs to refill glycogen. Aim ~'+Math.round(ZONES.weight*1.6)+'g protein across today and don\'t under-fuel dinner.'
-    : 'Load is moderate. Balanced plate — protein ~'+Math.round(ZONES.weight*1.4)+'g today, carbs matched to tomorrow\'s session.';
+  let msg;
+  if(hardDay && (meal==='Breakfast'||meal==='Lunch')) msg='Key '+ts.sport.toLowerCase()+' today ('+ts.label+'). Front-load carbs now — oats, rice, fruit — so you hit the session fuelled. Protein ~'+Math.round(ZONES.weight*1.6)+'g across the day.';
+  else if(hardDay) msg='Post-'+ts.sport.toLowerCase()+' recovery window. Protein + carbs within the hour to refill glycogen; aim ~'+Math.round(ZONES.weight*1.6)+'g protein total today.';
+  else if(highLoad) msg='Load is high right now — protein + carbs to recover. ~'+Math.round(ZONES.weight*1.6)+'g protein today; don’t under-fuel dinner.';
+  else msg='Lighter day ('+(ts?ts.sport.toLowerCase():'easy')+'). Balanced plate — protein ~'+Math.round(ZONES.weight*1.4)+'g, carbs matched to tomorrow’s session.';
   c.append(el('div','verdict',msg));
-  c.append(el('div','lede','Cross-referenced to your current fatigue and the time of day.'));
+  c.append(el('div','lede','Cross-referenced to today’s session and your current fatigue.'));
   v.append(c);
 }
 function renderCoach(){
   const v=$('#v-coach'); v.innerHTML='';
   const c=el('div','card'); c.append(el('h2',null,'Coach'));
-  c.append(el('div','lede','Ask anything — it answers with your real zones, current load and limiter in context. (Wiring in next stage.)'));
-  v.append(c);
+  const log=el('div',null); log.id='chatlog';
+  if(!S.chat.length) log.append(el('div','lede','Ask anything — training, pacing, recovery, race prep. It answers with your live zones, load and limiter in context.'));
+  S.chat.forEach(m=>{ const d=el('div','msg '+(m.role==='u'?'u':'a')); d.innerHTML=(m.role==='u'?'':'<b>Coach</b> ')+m.text; log.append(d); });
+  c.append(log);
+  const ta=el('textarea'); ta.id='coachIn'; ta.placeholder='e.g. Should I swim tomorrow or add a bike?';
+  c.append(ta);
+  const b=el('button','btn acc','Ask coach'); b.id='coachBtn';
+  c.append(b); v.append(c);
+  b.addEventListener('click', sendCoach);
 }
+async function sendCoach(){
+  const ta=$('#coachIn'), b=$('#coachBtn'); const q=(ta.value||'').trim(); if(!q) return;
+  S.chat.push({role:'u',text:q}); b.textContent='Thinking…'; b.disabled=true;
+  renderCoach();
+  try{ const reply=await postAI(q+' ### '+coachContext()); S.chat.push({role:'a',text:reply}); }
+  catch(e){ S.chat.push({role:'a',text:'Could not reach the coach just now. Try again in a moment.'}); }
+  renderCoach();
+}
+function getRaces(){ try{return JSON.parse(localStorage.getItem('cy_races')||'[]')}catch(e){return[]} }
+function saveRaces(r){ try{localStorage.setItem('cy_races',JSON.stringify(r))}catch(e){} }
 function renderRaces(){
-  const v=$('#v-races'); v.innerHTML='';
+  const v=$('#v-races'); v.innerHTML=''; const races=getRaces().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const now=new Date(); now.setHours(0,0,0,0);
   const c=el('div','card'); c.append(el('h2',null,'Races & goals'));
-  c.append(el('div','lede','Your targets, cross-referenced to needed fitness and current form. (Migrating from v1 next stage.)'));
+  if(!races.length) c.append(el('div','lede','No races yet. Add your next one below and Cyprus tracks the countdown and whether your fitness is trending where it needs to be.'));
+  races.forEach((rc,i)=>{
+    const d=new Date(rc.date); const days=Math.ceil((d-now)/864e5); const wks=(days/7);
+    const s=el('div','sess'); const m=el('div','m');
+    const status = days<0?'done':(S.fit.ramp>=0?'on track — fitness building':'fitness easing — watch the ramp');
+    m.innerHTML='<b>'+rc.name+'</b><span>'+d.toDateString().slice(4)+' · '+status+'</span>'; s.append(m);
+    s.append(el('div','cd',days<0?'—':days+'d'));
+    c.append(s);
+  });
   v.append(c);
+  const add=el('div','card'); add.append(el('h2',null,'Add a race'));
+  const ni=el('input'); ni.id='rcName'; ni.placeholder='Race name (e.g. IRONMAN 70.3 Geelong)';
+  const di=el('input'); di.id='rcDate'; di.type='date';
+  add.append(ni); add.append(di);
+  const b=el('button','btn acc','Add race'); add.append(b); v.append(add);
+  b.addEventListener('click',()=>{ const n=$('#rcName').value.trim(), dt=$('#rcDate').value; if(!n||!dt) return; const r=getRaces(); r.push({name:n,date:dt}); saveRaces(r); renderRaces(); });
 }
 const RENDER={today:renderToday,fitness:renderFitness,schedule:renderSchedule,fuel:renderFuel,coach:renderCoach,races:renderRaces};
 
@@ -263,10 +322,11 @@ function show(view){
 }
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('button'); if(b) show(b.dataset.v);});
 
-/* swipe nav */
+/* swipe nav (ignore inputs) */
 let sx=0,sy=0;
 addEventListener('touchstart',e=>{sx=e.touches[0].clientX; sy=e.touches[0].clientY;},{passive:true});
 addEventListener('touchend',e=>{
+  if(/INPUT|TEXTAREA/.test((e.target.tagName||''))) return;
   const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
   if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)) return;
   const order=['today','fitness','schedule','fuel','coach','races'];
@@ -282,17 +342,14 @@ async function boot(){
       getJSON('/api/u/activities').catch(()=>({activities:[]})),
       getJSON('/api/u/events').catch(()=>({events:[]}))
     ]);
-    S.me=me;
-    S.acts=(actsR.activities||actsR||[]);
-    S.events=(evR.events||evR||[]);
-    S.fit=computeFitness(S.acts);
-    S.ready=true;
+    S.me=me; S.acts=(actsR.activities||actsR||[]); S.events=(evR.events||evR||[]);
+    S.fit=computeFitness(S.acts); S.week=buildWeek(S.fit); S.ready=true;
     $('#sub').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
     const r=readiness(S.fit); $('#hdrTag').textContent=r.tag; $('#hdrTag').className='tag '+r.cls;
     let v='today'; try{v=localStorage.getItem('cy_view')||'today'}catch(e){}
     show(v);
   }catch(err){
-    $('#v-today').innerHTML='<div class="load">Couldn\'t load your data. Pull to refresh, or check you\'re signed in.<br><br>'+err.message+'</div>';
+    $('#v-today').innerHTML='<div class="load">Couldn’t load your data. Pull to refresh, or check you’re signed in.<br><br>'+err.message+'</div>';
   }
 }
 boot();
