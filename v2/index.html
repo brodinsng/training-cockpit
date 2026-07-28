@@ -334,11 +334,31 @@ addEventListener('touchend',e=>{
   if(i>=0&&i<order.length) show(order[i]);
 },{passive:true});
 
+/* ---------- connect gate ---------- */
+function renderConnect(me){
+  document.getElementById('tabs').style.display='none';
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  const v=$('#v-today'); v.classList.add('on');
+  $('#sub').textContent='Connect to begin'; $('#hdrTag').textContent=''; $('#hdrTag').className='tag';
+  const strava = me && me.strava, google = me && me.google;
+  const row=(ok,label,href,sub)=> ok
+    ? '<div class="sess"><div class="m"><b>'+label+'</b><span>'+sub+'</span></div><div class="tag t-good">Connected</div></div>'
+    : '<div class="sess"><div class="m"><b>'+label+'</b><span>'+sub+'</span></div><a class="btn acc" href="'+href+'">Connect</a></div>';
+  v.innerHTML=
+    '<div class="card"><h2>Welcome to Cyprus</h2><div class="lede">Cyprus reads your training from Strava and your schedule from Google Calendar, then builds your adaptive week, recovery fuel and coaching around your real data. Connect both to begin.</div></div>'
+    +'<div class="card"><h2>Your accounts</h2>'
+    + row(strava,'Strava','/api/auth/strava?return=%2Fv2%2F','Activities, load and zones')
+    + row(google,'Google Calendar','/api/auth/google?return=%2Fv2%2F','Your sessions and schedule')
+    + '</div>'
+    + ((strava&&google)?'<div class="card"><a class="btn acc" href="/v2/" style="width:100%;text-align:center">Enter Cyprus</a></div>':'');
+}
+
 /* ---------- boot ---------- */
 async function boot(){
+  let me=null; try{ me=await getJSON('/api/me'); }catch(e){}
+  if(!me || !me.strava || !me.google){ renderConnect(me); return; }
   try{
-    const [me,actsR,evR]=await Promise.all([
-      getJSON('/api/me').catch(()=>null),
+    const [actsR,evR]=await Promise.all([
       getJSON('/api/u/activities').catch(()=>({activities:[]})),
       getJSON('/api/u/events').catch(()=>({events:[]}))
     ]);
