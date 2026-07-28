@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Cyprus</title>
+<link rel="manifest" href="/v2/manifest.webmanifest">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#262d36;
+    --ink:#e6edf3; --mut:#8b949e; --dim:#6e7681;
+    --accent:#6f8fb0; --good:#57a773; --warn:#d0954a; --bad:#c96b6b;
+    --r:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  #app{max-width:640px; margin:0 auto; padding:0 16px calc(88px + env(safe-area-inset-bottom))}
+  header.top{display:flex; align-items:baseline; justify-content:space-between;
+    padding:calc(14px + env(safe-area-inset-top)) 2px 10px}
+  header.top h1{font-size:19px; font-weight:600; letter-spacing:.5px; margin:0}
+  header.top .sub{color:var(--dim); font-size:12px}
+  .view{display:none; animation:f .18s ease}
+  .view.on{display:block}
+  @keyframes f{from{opacity:0; transform:translateY(4px)}to{opacity:1}}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:16px; margin:0 0 12px}
+  .card h2{font-size:12px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
+    color:var(--mut); margin:0 0 12px}
+  .big{font-size:34px; font-weight:650; line-height:1.05; letter-spacing:-.5px}
+  .row{display:flex; gap:12px}
+  .metric{flex:1; background:var(--panel2); border:1px solid var(--line);
+    border-radius:10px; padding:12px}
+  .metric .k{color:var(--dim); font-size:11px; letter-spacing:.5px; text-transform:uppercase}
+  .metric .v{font-size:24px; font-weight:600; margin-top:2px}
+  .verdict{font-size:15px; margin-top:8px; color:var(--ink)}
+  .lede{color:var(--mut); font-size:13.5px; margin:2px 0 0}
+  .tag{display:inline-block; font-size:11px; font-weight:600; letter-spacing:.4px;
+    padding:3px 8px; border-radius:999px; border:1px solid var(--line)}
+  .t-good{color:var(--good); border-color:#2b5138}
+  .t-warn{color:var(--warn); border-color:#5a4526}
+  .t-bad{color:var(--bad); border-color:#5a2f2f}
+  .sess{display:flex; justify-content:space-between; align-items:center;
+    padding:11px 0; border-bottom:1px solid var(--line)}
+  .sess:last-child{border-bottom:0}
+  .sess .d{color:var(--dim); font-size:12px; width:38px}
+  .sess .m{flex:1; padding:0 10px}
+  .sess .m b{font-weight:600} .sess .m span{color:var(--dim); font-size:12px}
+  .flag{background:linear-gradient(180deg,#1c232c,#161b22); border-color:#3a2f22}
+  .flag h2{color:var(--warn)}
+  nav.tabs{position:fixed; left:0; right:0; bottom:0; z-index:40;
+    display:flex; justify-content:space-around; gap:2px;
+    background:rgba(13,17,23,.92); backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+  nav.tabs button{flex:1; background:none; border:0; color:var(--dim);
+    font-size:10.5px; letter-spacing:.3px; padding:6px 2px; cursor:pointer}
+  nav.tabs button.on{color:var(--accent)}
+  nav.tabs button .ic{display:block; font-size:16px; margin-bottom:3px; font-weight:600}
+  .load{color:var(--dim); text-align:center; padding:40px 0; font-size:13px}
+  .spark{display:flex; align-items:flex-end; gap:3px; height:44px; margin-top:10px}
+  .spark i{flex:1; background:var(--accent); opacity:.5; border-radius:2px 2px 0 0; min-height:2px}
+  .spark i.today{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div><h1>CYPRUS</h1><div class="sub" id="sub">loading…</div></div>
+    <div class="tag" id="hdrTag">—</div>
+  </header>
+
+  <section class="view on" id="v-today"><div class="load">Reading your training…</div></section>
+  <section class="view" id="v-fitness"></section>
+  <section class="view" id="v-schedule"></section>
+  <section class="view" id="v-fuel"></section>
+  <section class="view" id="v-coach"></section>
+  <section class="view" id="v-races"></section>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-v="today" class="on"><span class="ic">▲</span>Today</button>
+  <button data-v="fitness"><span class="ic">◆</span>Fitness</button>
+  <button data-v="schedule"><span class="ic">▤</span>Schedule</button>
+  <button data-v="fuel"><span class="ic">◈</span>Fuel</button>
+  <button data-v="coach"><span class="ic">◇</span>Coach</button>
+  <button data-v="races"><span class="ic">⚑</span>Races</button>
+</nav>
+
+<script>
+/* ---------- Cyprus v2 foundation ----------
+   Owns one clean state model. Reuses existing backend:
+   /api/me, /api/u/activities, /api/u/events, /api/u/ai
+------------------------------------------------ */
+const ZONES = {
+  hr:[127,158,174,189], ftp:199,
+  runPace:[2.83,3.288,3.662,3.912,4.162], // m/s boundaries
+  weight:65
+};
+const S = { me:null, acts:[], events:[], fit:null, view:'today', ready:false };
+
+const $ = s => document.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e;};
+const mins = s => Math.round(s/60);
+const fmtPace = mps => { if(!mps) return '—'; const s=1000/mps; return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0')+'/km'; };
+const dayName = d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+
+async function getJSON(u){ const r=await fetch(u,{credentials:'include'}); if(!r.ok) throw new Error(u+' '+r.status); return r.json(); }
+
+/* ---- Fitness model: CTL/ATL/TSB from real load (relative_effort) ---- */
+function computeFitness(acts){
+  // build daily load for last 60 days
+  const today = new Date(); today.setHours(0,0,0,0);
+  const day0 = today.getTime();
+  const load = {}; // dayIndex(0=today, negative past) -> load
+  acts.forEach(a=>{
+    const d = new Date(a.start_local || a.start_date_local || a.start_date);
+    d.setHours(0,0,0,0);
+    const idx = Math.round((d.getTime()-day0)/864e5);
+    if(idx>-60 && idx<=0){
+      const l = (a.summary && a.summary.relative_effort) || a.relative_effort || 0;
+      load[idx] = (load[idx]||0) + l;
+    }
+  });
+  // EWMA from oldest to today
+  const kC = 2/(42+1), kA = 2/(7+1);
+  let ctl=0, atl=0;
+  for(let i=-59;i<=0;i++){ const l=load[i]||0; ctl=ctl+kC*(l-ctl); atl=atl+kA*(l-atl); }
+  const tsb = ctl-atl;
+  // 14-day load spark
+  const spark=[]; for(let i=-13;i<=0;i++) spark.push(load[i]||0);
+  return { ctl:Math.round(ctl), atl:Math.round(atl), tsb:Math.round(tsb), spark };
+}
+
+/* ---- One authoritative readiness verdict (no fresh-vs-fatigued split) ---- */
+function readiness(f){
+  const t=f.tsb;
+  if(t <= -20) return {tag:'Overreached', cls:'t-bad', line:'Deep fatigue. Today is recovery or rest — not a day to add load.'};
+  if(t <= -8)  return {tag:'Fatigued', cls:'t-warn', line:'Carrying real load. Keep today easy; save intensity for when form recovers.'};
+  if(t < 5)    return {tag:'Neutral', cls:'', line:'Balanced. Fine to train as planned; let the session dictate effort.'};
+  if(t < 15)   return {tag:'Fresh', cls:'t-good', line:'Recovered and ready. Good window for a quality or key session.'};
+  return {tag:'Very fresh', cls:'t-good', line:'Well rested — if anything you may be under-training. Push the key session.'};
+}
+
+/* ---- Limiter watch: neglected weak link (swim) ---- */
+function limiterWatch(acts){
+  const now=Date.now();
+  const swims = acts.filter(a=>{
+    const st=(a.sport_type||a.type||'').toLowerCase();
+    const d=new Date(a.start_local||a.start_date_local);
+    return st.includes('swim') && (now-d.getTime()) < 21*864e5;
+  });
+  if(swims.length===0) return {sport:'Swim', line:'No swim logged in 3 weeks. Swim is your limiter — one session this week protects it.'};
+  return null;
+}
+
+/* ---------- Views ---------- */
+function renderToday(){
+  const v=$('#v-today'); v.innerHTML='';
+  const f=S.fit, r=readiness(f);
+  const c1=el('div','card');
+  c1.append(el('h2',null,'Readiness · today'));
+  const top=el('div','row'); top.style.alignItems='baseline'; top.style.justifyContent='space-between';
+  top.append(el('div','big',r.tag));
+  top.append(el('div','tag '+r.cls, 'Form '+(f.tsb>=0?'+':'')+f.tsb));
+  c1.append(top);
+  c1.append(el('div','verdict',r.line));
+  v.append(c1);
+
+  const lim=limiterWatch(S.acts);
+  if(lim){ const fc=el('div','card flag'); fc.append(el('h2',null,'Limiter watch')); fc.append(el('div','lede',lim.line)); v.append(fc); }
+
+  // last session
+  const last=S.acts[0];
+  if(last){
+    const c2=el('div','card'); c2.append(el('h2',null,'Last session'));
+    const su=last.summary||{};
+    c2.append(el('div','verdict','<b>'+last.name+'</b>'));
+    c2.append(el('div','lede',(su.distance?(su.distance/1000).toFixed(1)+' km · ':'')+
+      (su.moving_time?mins(su.moving_time)+' min · ':'')+'RE '+(su.relative_effort||'—')));
+    v.append(c2);
+  }
+}
+function renderFitness(){
+  const v=$('#v-fitness'); v.innerHTML='';
+  const f=S.fit;
+  const c=el('div','card'); c.append(el('h2',null,'Fitness'));
+  const row=el('div','row');
+  [['Fitness',f.ctl],['Fatigue',f.atl],['Form',(f.tsb>=0?'+':'')+f.tsb]].forEach(m=>{
+    const mm=el('div','metric'); mm.append(el('div','k',m[0])); mm.append(el('div','v',m[1])); row.append(mm);
+  });
+  c.append(row);
+  const sp=el('div','spark');
+  const max=Math.max(1,...f.spark);
+  f.spark.forEach((l,i)=>{const b=el('i'); b.style.height=(6+l/max*38)+'px'; if(i===f.spark.length-1)b.className='today'; sp.append(b);});
+  c.append(sp);
+  c.append(el('div','lede','14-day training load. Fitness (CTL) is your rolling 42-day load; Form (TSB) is fitness minus fatigue.'));
+  v.append(c);
+
+  const z=el('div','card'); z.append(el('h2',null,'Your zones (from Strava)'));
+  z.append(el('div','lede','HR Z2 128–158 · Z4 175–189 · FTP '+ZONES.ftp+'W · threshold pace '+fmtPace(ZONES.runPace[3])));
+  v.append(z);
+}
+function evDate(e){ return new Date((e.start&&(e.start.dateTime||e.start.date))||e.start_local||Date.now()); }
+function renderSchedule(){
+  const v=$('#v-schedule'); v.innerHTML='';
+  const c=el('div','card'); c.append(el('h2',null,'Next 7 days'));
+  const now=new Date(); now.setHours(0,0,0,0);
+  const start=now.getTime(), end=start+8*864e5;
+  const evs=(S.events||[]).map(e=>({e,d:evDate(e)}))
+    .filter(x=>x.d.getTime()>=start && x.d.getTime()<=end)
+    .sort((a,b)=>a.d-b.d).slice(0,14);
+  if(!evs.length){ c.append(el('div','lede','Nothing on the calendar for the next 7 days.')); }
+  evs.forEach(x=>{
+    const s=el('div','sess');
+    s.append(el('div','d',dayName(x.d)));
+    const m=el('div','m');
+    const tm=(x.d.getHours()||x.d.getMinutes())?(String(x.d.getHours()).padStart(2,'0')+':'+String(x.d.getMinutes()).padStart(2,'0')):'';
+    m.innerHTML='<b>'+(x.e.summary||'Session')+'</b>'+(tm?' <span>'+tm+'</span>':'');
+    s.append(m);
+    c.append(s);
+  });
+  v.append(c);
+  const note=el('div','card'); note.append(el('h2',null,'Fixed anchors'));
+  note.append(el('div','lede','Wed / Fri / Sat FIVE45 and Sun CCP are locked — the adaptive plan builds around them, never over them.'));
+  v.append(note);
+}
+function renderFuel(){
+  const v=$('#v-fuel'); v.innerHTML='';
+  const h=new Date().getHours();
+  const meal = h<10?'Breakfast':h<15?'Lunch':h<20?'Dinner':'Evening';
+  const f=S.fit; const hard = f.atl>f.ctl+3;
+  const c=el('div','card'); c.append(el('h2',null,meal+' · recovery-aware'));
+  const msg = hard
+    ? 'Load is high right now — prioritise protein + carbs to refill glycogen. Aim ~'+Math.round(ZONES.weight*1.6)+'g protein across today and don\'t under-fuel dinner.'
+    : 'Load is moderate. Balanced plate — protein ~'+Math.round(ZONES.weight*1.4)+'g today, carbs matched to tomorrow\'s session.';
+  c.append(el('div','verdict',msg));
+  c.append(el('div','lede','Cross-referenced to your current fatigue and the time of day.'));
+  v.append(c);
+}
+function renderCoach(){
+  const v=$('#v-coach'); v.innerHTML='';
+  const c=el('div','card'); c.append(el('h2',null,'Coach'));
+  c.append(el('div','lede','Ask anything — it answers with your real zones, current load and limiter in context. (Wiring in next stage.)'));
+  v.append(c);
+}
+function renderRaces(){
+  const v=$('#v-races'); v.innerHTML='';
+  const c=el('div','card'); c.append(el('h2',null,'Races & goals'));
+  c.append(el('div','lede','Your targets, cross-referenced to needed fitness and current form. (Migrating from v1 next stage.)'));
+  v.append(c);
+}
+const RENDER={today:renderToday,fitness:renderFitness,schedule:renderSchedule,fuel:renderFuel,coach:renderCoach,races:renderRaces};
+
+function show(view){
+  S.view=view;
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  $('#v-'+view).classList.add('on');
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+  if(S.ready) RENDER[view]();
+  try{localStorage.setItem('cy_view',view)}catch(e){}
+}
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button'); if(b) show(b.dataset.v);});
+
+/* swipe nav */
+let sx=0,sy=0;
+addEventListener('touchstart',e=>{sx=e.touches[0].clientX; sy=e.touches[0].clientY;},{passive:true});
+addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+  if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)) return;
+  const order=['today','fitness','schedule','fuel','coach','races'];
+  let i=order.indexOf(S.view); i+= dx<0?1:-1;
+  if(i>=0&&i<order.length) show(order[i]);
+},{passive:true});
+
+/* ---------- boot ---------- */
+async function boot(){
+  try{
+    const [me,actsR,evR]=await Promise.all([
+      getJSON('/api/me').catch(()=>null),
+      getJSON('/api/u/activities').catch(()=>({activities:[]})),
+      getJSON('/api/u/events').catch(()=>({events:[]}))
+    ]);
+    S.me=me;
+    S.acts=(actsR.activities||actsR||[]);
+    S.events=(evR.events||evR||[]);
+    S.fit=computeFitness(S.acts);
+    S.ready=true;
+    $('#sub').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
+    const r=readiness(S.fit); $('#hdrTag').textContent=r.tag; $('#hdrTag').className='tag '+r.cls;
+    let v='today'; try{v=localStorage.getItem('cy_view')||'today'}catch(e){}
+    show(v);
+  }catch(err){
+    $('#v-today').innerHTML='<div class="load">Couldn\'t load your data. Pull to refresh, or check you\'re signed in.<br><br>'+err.message+'</div>';
+  }
+}
+boot();
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('/v2/sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>
